@@ -1,0 +1,32 @@
+[
+  {
+    "name": "calculate_sum",
+    "path": "/home/zahary/metacraft/codetracer-main/codetracer/src/db-backend/test-programs/rust/rust_flow_test.rs",
+    "line": 4,
+    "kind": "function"
+  },
+  {
+    "name": "compute_area",
+    "path": "/home/zahary/metacraft/codetracer-main/codetracer/src/db-backend/test-programs/rust/rust_float_test.rs",
+    "line": 7,
+    "kind": "function"
+  },
+  {
+    "name": "main",
+    "path": "/home/zahary/metacraft/codetracer-main/codetracer/src/db-backend/test-programs/rust/rust_float_test.rs",
+    "line": 14,
+    "kind": "function"
+  },
+  {
+    "name": "main",
+    "path": "/home/zahary/metacraft/codetracer-main/codetracer/src/db-backend/test-programs/rust/rust_flow_test.rs",
+    "line": 15,
+    "kind": "function"
+  },
+  {
+    "name": "with_loops",
+    "path": "/home/zahary/metacraft/codetracer-main/codetracer/src/db-backend/test-programs/rust/rust_flow_test.rs",
+    "line": 24,
+    "kind": "function"
+  }
+]

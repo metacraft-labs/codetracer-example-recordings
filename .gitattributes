@@ -1,0 +1,12 @@
+*/rr/data filter=lfs diff=lfs merge=lfs -text
+*/rr/mmap_* filter=lfs diff=lfs merge=lfs -text
+*.bin filter=lfs diff=lfs merge=lfs -text
+*/rr/events filter=lfs diff=lfs merge=lfs -text
+*/rr/tasks filter=lfs diff=lfs merge=lfs -text
+*/rr/write_events.txt filter=lfs diff=lfs merge=lfs -text
+**/rr/data filter=lfs diff=lfs merge=lfs -text
+**/rr/mmap_* filter=lfs diff=lfs merge=lfs -text
+**/rr/events filter=lfs diff=lfs merge=lfs -text
+**/rr/tasks filter=lfs diff=lfs merge=lfs -text
+**/rr/write_events.txt filter=lfs diff=lfs merge=lfs -text
+**/rr/mmaps filter=lfs diff=lfs merge=lfs -text

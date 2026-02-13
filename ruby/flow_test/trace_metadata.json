@@ -1,0 +1,7 @@
+{
+  "program": "/tmp/ct-example-recordings-build/ruby_flow_test.rb",
+  "args": [
+
+  ],
+  "workdir": "/home/zahary/metacraft/codetracer-main/codetracer-rr-backend"
+}

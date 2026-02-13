@@ -1,0 +1,30 @@
+{
+  "id": 0,
+  "program": "/tmp/ct-example-recordings-build/c_flow_test",
+  "args": [],
+  "env": "",
+  "workdir": "/home/zahary/metacraft/codetracer-main/codetracer-rr-backend/codetracer-example-recordings",
+  "output": "",
+  "sourceFolders": [
+    "/home/zahary/metacraft/codetracer-main/codetracer/src/db-backend/test-programs/c"
+  ],
+  "lowLevelFolder": "",
+  "compileCommand": "",
+  "outputFolder": "/home/zahary/metacraft/codetracer-main/codetracer-rr-backend/codetracer-example-recordings/c/flow_test",
+  "date": "",
+  "duration": "",
+  "lang": 0,
+  "imported": false,
+  "calltrace": true,
+  "events": true,
+  "test": false,
+  "archiveServerID": -1,
+  "shellID": -1,
+  "teamID": -1,
+  "rrPid": 3676375,
+  "exitCode": 0,
+  "calltraceMode": 0,
+  "downloadKey": "",
+  "controlId": "",
+  "onlineExpireTime": -1
+}

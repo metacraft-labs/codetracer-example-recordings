@@ -1,0 +1,158 @@
+[
+  {
+    "name": "BLUE",
+    "path": "/home/zahary/metacraft/codetracer-main/codetracer/src/db-backend/test-programs/c/c_flow_test.c",
+    "line": 17,
+    "kind": "enumerator"
+  },
+  {
+    "name": "Color",
+    "path": "/home/zahary/metacraft/codetracer-main/codetracer/src/db-backend/test-programs/c/c_flow_test.c",
+    "line": 17,
+    "kind": "enum"
+  },
+  {
+    "name": "GREEN",
+    "path": "/home/zahary/metacraft/codetracer-main/codetracer/src/db-backend/test-programs/c/c_flow_test.c",
+    "line": 17,
+    "kind": "enumerator"
+  },
+  {
+    "name": "MAX_SIZE",
+    "path": "/home/zahary/metacraft/codetracer-main/codetracer/src/db-backend/test-programs/c/c_flow_test.c",
+    "line": 15,
+    "kind": "macro"
+  },
+  {
+    "name": "Point",
+    "path": "/home/zahary/metacraft/codetracer-main/codetracer/src/db-backend/test-programs/c/c_flow_test.c",
+    "line": 19,
+    "kind": "struct"
+  },
+  {
+    "name": "RED",
+    "path": "/home/zahary/metacraft/codetracer-main/codetracer/src/db-backend/test-programs/c/c_flow_test.c",
+    "line": 17,
+    "kind": "enumerator"
+  },
+  {
+    "name": "a",
+    "path": "/home/zahary/metacraft/codetracer-main/codetracer/src/db-backend/test-programs/c/c_flow_test.c",
+    "line": 24,
+    "kind": "parameter"
+  },
+  {
+    "name": "b",
+    "path": "/home/zahary/metacraft/codetracer-main/codetracer/src/db-backend/test-programs/c/c_flow_test.c",
+    "line": 24,
+    "kind": "parameter"
+  },
+  {
+    "name": "c",
+    "path": "/home/zahary/metacraft/codetracer-main/codetracer/src/db-backend/test-programs/c/c_flow_test.c",
+    "line": 69,
+    "kind": "local"
+  },
+  {
+    "name": "calculate_sum",
+    "path": "/home/zahary/metacraft/codetracer-main/codetracer/src/db-backend/test-programs/c/c_flow_test.c",
+    "line": 24,
+    "kind": "function"
+  },
+  {
+    "name": "doubled",
+    "path": "/home/zahary/metacraft/codetracer-main/codetracer/src/db-backend/test-programs/c/c_flow_test.c",
+    "line": 26,
+    "kind": "local"
+  },
+  {
+    "name": "final_result",
+    "path": "/home/zahary/metacraft/codetracer-main/codetracer/src/db-backend/test-programs/c/c_flow_test.c",
+    "line": 27,
+    "kind": "local"
+  },
+  {
+    "name": "i",
+    "path": "/home/zahary/metacraft/codetracer-main/codetracer/src/db-backend/test-programs/c/c_flow_test.c",
+    "line": 36,
+    "kind": "local"
+  },
+  {
+    "name": "j",
+    "path": "/home/zahary/metacraft/codetracer-main/codetracer/src/db-backend/test-programs/c/c_flow_test.c",
+    "line": 42,
+    "kind": "local"
+  },
+  {
+    "name": "k",
+    "path": "/home/zahary/metacraft/codetracer-main/codetracer/src/db-backend/test-programs/c/c_flow_test.c",
+    "line": 50,
+    "kind": "local"
+  },
+  {
+    "name": "main",
+    "path": "/home/zahary/metacraft/codetracer-main/codetracer/src/db-backend/test-programs/c/c_flow_test.c",
+    "line": 58,
+    "kind": "function"
+  },
+  {
+    "name": "n",
+    "path": "/home/zahary/metacraft/codetracer-main/codetracer/src/db-backend/test-programs/c/c_flow_test.c",
+    "line": 34,
+    "kind": "parameter"
+  },
+  {
+    "name": "p",
+    "path": "/home/zahary/metacraft/codetracer-main/codetracer/src/db-backend/test-programs/c/c_flow_test.c",
+    "line": 64,
+    "kind": "local"
+  },
+  {
+    "name": "result",
+    "path": "/home/zahary/metacraft/codetracer-main/codetracer/src/db-backend/test-programs/c/c_flow_test.c",
+    "line": 61,
+    "kind": "local"
+  },
+  {
+    "name": "sum",
+    "path": "/home/zahary/metacraft/codetracer-main/codetracer/src/db-backend/test-programs/c/c_flow_test.c",
+    "line": 25,
+    "kind": "local"
+  },
+  {
+    "name": "sum",
+    "path": "/home/zahary/metacraft/codetracer-main/codetracer/src/db-backend/test-programs/c/c_flow_test.c",
+    "line": 35,
+    "kind": "local"
+  },
+  {
+    "name": "with_loops",
+    "path": "/home/zahary/metacraft/codetracer-main/codetracer/src/db-backend/test-programs/c/c_flow_test.c",
+    "line": 34,
+    "kind": "function"
+  },
+  {
+    "name": "x",
+    "path": "/home/zahary/metacraft/codetracer-main/codetracer/src/db-backend/test-programs/c/c_flow_test.c",
+    "line": 20,
+    "kind": "member"
+  },
+  {
+    "name": "x",
+    "path": "/home/zahary/metacraft/codetracer-main/codetracer/src/db-backend/test-programs/c/c_flow_test.c",
+    "line": 59,
+    "kind": "local"
+  },
+  {
+    "name": "y",
+    "path": "/home/zahary/metacraft/codetracer-main/codetracer/src/db-backend/test-programs/c/c_flow_test.c",
+    "line": 21,
+    "kind": "member"
+  },
+  {
+    "name": "y",
+    "path": "/home/zahary/metacraft/codetracer-main/codetracer/src/db-backend/test-programs/c/c_flow_test.c",
+    "line": 60,
+    "kind": "local"
+  }
+]

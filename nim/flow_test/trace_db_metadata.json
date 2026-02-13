@@ -1,0 +1,30 @@
+{
+  "id": 0,
+  "program": "/tmp/ct-example-recordings-build/nim_flow_test",
+  "args": [],
+  "env": "",
+  "workdir": "/home/zahary/metacraft/codetracer-main/codetracer-rr-backend/codetracer-example-recordings",
+  "output": "",
+  "sourceFolders": [
+    "/home/zahary/.cache/nim/nim_flow_test_d"
+  ],
+  "lowLevelFolder": "",
+  "compileCommand": "",
+  "outputFolder": "/home/zahary/metacraft/codetracer-main/codetracer-rr-backend/codetracer-example-recordings/nim/flow_test",
+  "date": "",
+  "duration": "",
+  "lang": 3,
+  "imported": false,
+  "calltrace": true,
+  "events": true,
+  "test": false,
+  "archiveServerID": -1,
+  "shellID": -1,
+  "teamID": -1,
+  "rrPid": 3676435,
+  "exitCode": 0,
+  "calltraceMode": 0,
+  "downloadKey": "",
+  "controlId": "",
+  "onlineExpireTime": -1
+}
