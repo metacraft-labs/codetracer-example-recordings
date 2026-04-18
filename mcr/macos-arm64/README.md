@@ -1,6 +1,6 @@
-# MCR Cooperative Mode Recording -- macOS ARM64
+# MCR Recording: macOS ARM64
 
-Pre-made cooperative-mode `.ct` recording for DAP integration testing.
+Pre-made `.ct` recording from an Apple Silicon Mac (M1) for DAP integration testing.
 
 ## Recording details
 

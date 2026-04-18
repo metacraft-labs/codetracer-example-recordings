@@ -17,31 +17,30 @@ was produced by a real CodeTracer recorder over a real program.
 | Python | `python/flow_test/` | `codetracer-python-recorder` | CBOR+zstd binary |
 | Ruby | `ruby/flow_test/` | `codetracer-pure-ruby-recorder` | JSON |
 
-### MCR Cooperative Recordings
+### MCR Recordings
 
-| Platform | Directory | Format |
-|----------|-----------|--------|
-| macOS ARM64 | `mcr/cooperative-macos-arm64/` | `.ct` (CTFS container) |
+| Platform | Directory | Device | Format |
+|----------|-----------|--------|--------|
+| macOS ARM64 | `mcr/macos-arm64/` | Apple Silicon Mac (M1) | `.ct` (CTFS) |
+| Android ARM64 | `mcr/android-arm64/` | Samsung Galaxy S24 Ultra | `.ct` (CTFS) |
 
-MCR cooperative recordings are stored **without embedded binaries**. The
-recorded program's binary is stored separately in a `binaries/` subdirectory.
+MCR recordings are stored **without embedded binaries**. The recorded
+program's binary is stored separately in a `binaries/` subdirectory.
 This allows tests to exercise both scenarios:
 
-1. **Replay with original binary** -- tests load the binary from `binaries/`
-   and embed it into the trace before replay.
-2. **Replay without original binary** -- tests verify that the trace metadata,
-   events, memory snapshots, and register checkpoints are sufficient for DAP
-   inspection even when the original binary is unavailable.
+1. **Replay with embedded binary** — tests embed the binary from `binaries/`
+   into the trace via filemap, then verify the debugserver can load it.
+2. **Replay after deleting binaries** — tests delete the original binary,
+   verify the debugserver can still replay from the embedded copy in the trace.
 
 #### TODO: Additional platforms
 
-The following platform fixtures are planned but not yet recorded:
+The following platform recordings are planned but not yet captured:
 
-- `mcr/cooperative-android-arm64/` -- recording from an Android phone via CTSP
-- `mcr/cooperative-ios-arm64/` -- recording from an iOS device
-- `mcr/cooperative-linux-x86_64/` -- recording from Linux x86_64
-- `mcr/cooperative-linux-arm64/` -- recording from Linux ARM64
-- `mcr/cooperative-windows-x86_64/` -- recording from Windows x86_64
+- `mcr/ios-arm64/` — recording from an iOS device or simulator
+- `mcr/linux-x86_64/` — recording from Linux x86_64
+- `mcr/linux-arm64/` — recording from Linux ARM64
+- `mcr/windows-x86_64/` — recording from Windows x86_64
 
 ## Standard Recordings
 
@@ -88,7 +87,7 @@ codetracer-python-recorder --trace-dir python/flow_test --format binary programs
 ruby path/to/codetracer-pure-ruby-recorder -o ruby/flow_test programs/ruby_flow_test.rb
 ```
 
-#### MCR cooperative recordings
+#### MCR recordings
 
 See each recording's own `README.md` for regeneration instructions.
 
