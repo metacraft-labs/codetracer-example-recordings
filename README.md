@@ -22,6 +22,7 @@ was produced by a real CodeTracer recorder over a real program.
 | Platform | Directory | Device | Format |
 |----------|-----------|--------|--------|
 | macOS ARM64 | `mcr/macos-arm64/` | Apple Silicon Mac (M1) | `.ct` (CTFS) |
+| Linux x86_64 | `mcr/linux-x86_64/` | Linux AMD64 (ct-mcr interpose) | `.ct` (CTFS) |
 | Android ARM64 | `mcr/android-arm64/` | Samsung Galaxy S24 Ultra | `.ct` (CTFS) |
 | iOS ARM64 | `mcr/ios-arm64/` | iPhone 17 Pro simulator | `.ct` (CTFS) |
 
@@ -38,9 +39,15 @@ This allows tests to exercise both scenarios:
 
 The following platform recordings are planned but not yet captured:
 
-- `mcr/linux-x86_64/` — recording from Linux x86_64
 - `mcr/linux-arm64/` — recording from Linux ARM64
 - `mcr/windows-x86_64/` — recording from Windows x86_64
+
+#### TODO: Add regeneration scripts for existing platforms
+
+The `mcr/linux-x86_64/` recording has a `regenerate.sh` script. The macOS,
+Android, and iOS recordings should also get equivalent scripts and should
+reference the shared source at `programs/ct_fixture_prog.c` instead of
+keeping per-platform copies.
 
 ## Standard Recordings
 
@@ -49,10 +56,14 @@ All standard test programs compute the same values: `calculate_sum(10, 32)` = 94
 
 ### Source programs
 
-The `programs/` directory contains the Python and Ruby source programs used to
-create their respective recordings. The RR-based recordings (Rust, C, Go, Nim)
-use test programs from the `codetracer` repo at
-`src/db-backend/test-programs/<lang>/`.
+The `programs/` directory contains source programs used to create recordings:
+
+- `programs/ct_fixture_prog.c` — shared C source for all MCR platform recordings
+- `programs/python_flow_test.py` — Python flow test
+- `programs/ruby_flow_test.rb` — Ruby flow test
+
+The RR-based recordings (Rust, C, Go, Nim) use test programs from the
+`codetracer` repo at `src/db-backend/test-programs/<lang>/`.
 
 ### How recordings were created
 
@@ -89,7 +100,15 @@ ruby path/to/codetracer-pure-ruby-recorder -o ruby/flow_test programs/ruby_flow_
 
 #### MCR recordings
 
-See each recording's own `README.md` for regeneration instructions.
+Each MCR platform has its own `README.md` and (where available) a
+`regenerate.sh` script. For Linux x86_64:
+
+```bash
+# From repo root, inside the codetracer-native-recorder nix dev shell:
+direnv exec ../codetracer-native-recorder bash mcr/linux-x86_64/regenerate.sh
+```
+
+See each recording's own `README.md` for platform-specific details.
 
 ## RR trace folder structure
 
@@ -104,15 +123,18 @@ Each RR recording follows the standard CodeTracer trace folder layout:
   symbols.json               # Extracted symbols
 ```
 
-## MCR cooperative recording structure
+## MCR recording structure
 
 ```
+programs/
+  ct_fixture_prog.c            # Shared source for MCR recordings
 mcr/<platform>/
-  trace.ct                   # CTFS container (no embedded binaries)
-  binaries/                  # Compiled program binary for this platform
-    <program>                # Mach-O / ELF / PE binary
-  source.c                   # Source code of the recorded program
-  README.md                  # Platform-specific details
+  trace.ct                     # CTFS container (no embedded binaries)
+  binaries/                    # Compiled program binary for this platform
+    ct_fixture_prog            # Mach-O / ELF / PE binary
+  source.c                     # Symlink to ../../programs/ct_fixture_prog.c
+  regenerate.sh                # Script to rebuild binary + re-record trace
+  README.md                    # Platform-specific details
 ```
 
 ## Usage in tests
