@@ -23,6 +23,7 @@ was produced by a real CodeTracer recorder over a real program.
 |----------|-----------|--------|--------|
 | macOS ARM64 | `mcr/macos-arm64/` | Apple Silicon Mac (M1) | `.ct` (CTFS) |
 | Android ARM64 | `mcr/android-arm64/` | Samsung Galaxy S24 Ultra | `.ct` (CTFS) |
+| iOS ARM64 | `mcr/ios-arm64/` | iPhone 17 Pro simulator | `.ct` (CTFS) |
 
 MCR recordings are stored **without embedded binaries**. The recorded
 program's binary is stored separately in a `binaries/` subdirectory.
@@ -37,7 +38,6 @@ This allows tests to exercise both scenarios:
 
 The following platform recordings are planned but not yet captured:
 
-- `mcr/ios-arm64/` — recording from an iOS device or simulator
 - `mcr/linux-x86_64/` — recording from Linux x86_64
 - `mcr/linux-arm64/` — recording from Linux ARM64
 - `mcr/windows-x86_64/` — recording from Windows x86_64
