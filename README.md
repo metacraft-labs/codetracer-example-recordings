@@ -17,19 +17,47 @@ was produced by a real CodeTracer recorder over a real program.
 | Python | `python/flow_test/` | `codetracer-python-recorder` | CBOR+zstd binary |
 | Ruby | `ruby/flow_test/` | `codetracer-pure-ruby-recorder` | JSON |
 
-All test programs compute the same values: `calculate_sum(10, 32)` = 94,
+### MCR Cooperative Recordings
+
+| Platform | Directory | Format |
+|----------|-----------|--------|
+| macOS ARM64 | `mcr/cooperative-macos-arm64/` | `.ct` (CTFS container) |
+
+MCR cooperative recordings are stored **without embedded binaries**. The
+recorded program's binary is stored separately in a `binaries/` subdirectory.
+This allows tests to exercise both scenarios:
+
+1. **Replay with original binary** -- tests load the binary from `binaries/`
+   and embed it into the trace before replay.
+2. **Replay without original binary** -- tests verify that the trace metadata,
+   events, memory snapshots, and register checkpoints are sufficient for DAP
+   inspection even when the original binary is unavailable.
+
+#### TODO: Additional platforms
+
+The following platform fixtures are planned but not yet recorded:
+
+- `mcr/cooperative-android-arm64/` -- recording from an Android phone via CTSP
+- `mcr/cooperative-ios-arm64/` -- recording from an iOS device
+- `mcr/cooperative-linux-x86_64/` -- recording from Linux x86_64
+- `mcr/cooperative-linux-arm64/` -- recording from Linux ARM64
+- `mcr/cooperative-windows-x86_64/` -- recording from Windows x86_64
+
+## Standard Recordings
+
+All standard test programs compute the same values: `calculate_sum(10, 32)` = 94,
 `sum_with_for(9)` = 45, `sum_with_while(9)` = 45.
 
-## Source programs
+### Source programs
 
 The `programs/` directory contains the Python and Ruby source programs used to
 create their respective recordings. The RR-based recordings (Rust, C, Go, Nim)
 use test programs from the `codetracer` repo at
 `src/db-backend/test-programs/<lang>/`.
 
-## How recordings were created
+### How recordings were created
 
-### RR recordings (Rust, C, Go, Nim)
+#### RR recordings (Rust, C, Go, Nim)
 
 Each RR recording was built and recorded using `ct-rr-support` from the
 `codetracer-rr-backend` repo:
@@ -48,17 +76,21 @@ ct-rr-support record -o go/flow_test /tmp/go_flow_program
 ct-rr-support record -o nim/flow_test /tmp/nim_flow_test
 ```
 
-### Python recording
+#### Python recording
 
 ```bash
 codetracer-python-recorder --trace-dir python/flow_test --format binary programs/python_flow_test.py
 ```
 
-### Ruby recording
+#### Ruby recording
 
 ```bash
 ruby path/to/codetracer-pure-ruby-recorder -o ruby/flow_test programs/ruby_flow_test.rb
 ```
+
+#### MCR cooperative recordings
+
+See each recording's own `README.md` for regeneration instructions.
 
 ## RR trace folder structure
 
@@ -73,6 +105,17 @@ Each RR recording follows the standard CodeTracer trace folder layout:
   symbols.json               # Extracted symbols
 ```
 
+## MCR cooperative recording structure
+
+```
+mcr/<platform>/
+  trace.ct                   # CTFS container (no embedded binaries)
+  binaries/                  # Compiled program binary for this platform
+    <program>                # Mach-O / ELF / PE binary
+  source.c                   # Source code of the recorded program
+  README.md                  # Platform-specific details
+```
+
 ## Usage in tests
 
 This repo is intended to be used as a git submodule in the `codetracer` repo:
@@ -81,7 +124,8 @@ This repo is intended to be used as a git submodule in the `codetracer` repo:
 git submodule add https://github.com/metacraft-labs/codetracer-example-recordings.git examples/recordings
 ```
 
-Then tests can reference recordings at `examples/recordings/<lang>/flow_test/`.
+Then tests can reference recordings at `examples/recordings/<lang>/flow_test/`
+or `examples/recordings/mcr/<platform>/`.
 
 ## Regenerating recordings
 
