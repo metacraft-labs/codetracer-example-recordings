@@ -1,6 +1,6 @@
 # MCR Recording: Linux x86_64
 
-Pre-made `.ct` recording from a Linux x86_64 machine for DAP integration testing.
+Pre-made `.ct` recording from a Linux x86_64 machine.
 
 ## Recording details
 
@@ -10,16 +10,16 @@ Pre-made `.ct` recording from a Linux x86_64 machine for DAP integration testing
 - **Program:** `ct_fixture_prog` (compiled from `programs/ct_fixture_prog.c`)
 - **Threads:** 4 (1 main + 3 workers)
 - **Events:** 48 total
-- **Embedded binaries:** none (stored separately in `binaries/`)
 
 ## Files
 
 | File | Description |
 |------|-------------|
-| `trace.ct` | CTFS container with event streams, recorded via `ct-mcr record --use-interpose`. Does NOT contain embedded binaries or filemap. |
-| `binaries/ct_fixture_prog` | x86_64 ELF executable compiled from `programs/ct_fixture_prog.c` with `-g -O0`. |
-| `source.c` | Symlink to `../../programs/ct_fixture_prog.c` (shared source). |
-| `regenerate.sh` | Script to rebuild the binary and re-record the trace. |
+| `trace.ct` | Raw CTFS container with event streams. No embedded binaries. For emulator unit tests. |
+| `trace-portable.ct` | Enriched portable trace with embedded binaries (main binary + ld-linux + libc). For GUI E2E and cross-platform replay tests. |
+| `binaries/ct_fixture_prog` | x86_64 ELF executable compiled with `-g -O0`. |
+| `source.c` | Symlink to `../../programs/ct_fixture_prog.c`. |
+| `regenerate.sh` | Script to rebuild binary, record trace, and export portable version. |
 
 ## What the program does
 
@@ -34,20 +34,20 @@ Pre-made `.ct` recording from a Linux x86_64 machine for DAP integration testing
 
 ```bash
 # From the codetracer-example-recordings repo root, inside the
-# codetracer-native-recorder nix dev shell:
-direnv exec ../codetracer-native-recorder bash mcr/linux-x86_64/regenerate.sh
-
-# Or step by step:
-cc -O0 -g -pthread -o mcr/linux-x86_64/binaries/ct_fixture_prog programs/ct_fixture_prog.c
-ct-mcr record --use-interpose -o mcr/linux-x86_64/trace.ct -- mcr/linux-x86_64/binaries/ct_fixture_prog
+# codetracer nix dev shell (which provides cc, ct-mcr, ct):
+direnv exec ../codetracer bash mcr/linux-x86_64/regenerate.sh
 ```
+
+This produces both `trace.ct` (raw) and `trace-portable.ct` (enriched with
+binaries and debug symbols for cross-platform replay).
 
 ## Usage in tests
 
-Used by DAP integration tests as a fixture for Linux x86_64 replay.
+| Trace file | Used for |
+|------------|----------|
+| `trace.ct` | Emulator unit tests, DAP integration tests, debugserver tests |
+| `trace-portable.ct` | Browser GUI E2E tests (via `ct host --trace-path`), cross-platform replay |
 
-Tests can:
-1. Load `trace.ct` directly for DAP inspection (metadata, events, registers).
-2. Read the binary from `binaries/ct_fixture_prog` and embed it into a copy of
-   the trace to test binary-aware replay.
-3. Verify that replay works both with and without the original binary present.
+The portable trace contains embedded binaries (main executable + dynamic
+linker + libc) so it can be replayed on any platform — the emulator loads
+the binary from the CTFS container and feeds recorded events.

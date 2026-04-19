@@ -26,6 +26,7 @@ was produced by a real CodeTracer recorder over a real program.
 | Android ARM64 | `mcr/android-arm64/` | Samsung Galaxy S24 Ultra | `.ct` (CTFS) |
 | iOS ARM64 | `mcr/ios-arm64/` | iPhone 17 Pro simulator | `.ct` (CTFS) |
 | Windows x86_64 | `mcr/windows-x86_64/` | Windows 11 x64 (ct-mcr interpose) | `.ct` (CTFS) |
+| Linux ARM64 | `mcr/linux-arm64/` | Linux ARM64 (ct-mcr interpose) | `.ct` (CTFS) |
 
 MCR recordings are stored **without embedded binaries**. The recorded
 program's binary is stored separately in a `binaries/` subdirectory.
@@ -36,12 +37,45 @@ This allows tests to exercise both scenarios:
 2. **Replay after deleting binaries** — tests delete the original binary,
    verify the debugserver can still replay from the embedded copy in the trace.
 
-#### TODO: Additional platforms
+#### Portable traces for GUI E2E tests
 
-The following platform recordings are planned but not yet captured:
+Each platform should produce **two** trace files:
 
-- `mcr/linux-arm64/` — recording from Linux ARM64
+1. **`trace.ct`** — raw MCR recording (no embedded binaries). Used by
+   emulator unit tests and debugserver integration tests.
+2. **`trace-portable.ct`** — enriched portable trace with embedded
+   binaries, debug symbols, and source file references. Used by browser
+   GUI E2E tests (via `ct host --trace-path`) and cross-platform replay.
 
+The portable trace is created by running `ct-mcr export --portable` on
+the raw trace. The `regenerate.sh` script on each platform should produce
+both files. See `mcr/linux-x86_64/regenerate.sh` for the reference
+implementation.
+
+#### TODO: Regenerate portable traces for all platforms
+
+Each platform recording needs a `regenerate.sh` (or `.ps1` on Windows)
+that produces both `trace.ct` and `trace-portable.ct`. Status:
+
+| Platform | `regenerate.sh` | `trace.ct` | `trace-portable.ct` | Notes |
+|----------|----------------|------------|---------------------|-------|
+| linux-x86_64 | done | done | done | Reference implementation |
+| macos-arm64 | TODO | done (synthetic) | TODO | Run on Apple Silicon Mac |
+| windows-x86_64 | done (.ps1) | done | TODO | Add portable export to .ps1 |
+| android-arm64 | TODO | done | TODO | Requires connected device |
+| ios-arm64 | TODO | done | TODO | Requires Xcode + simulator |
+| linux-arm64 | TODO | TODO | TODO | Run on ARM64 Linux host |
+
+To regenerate a platform (example for Linux x86_64):
+```bash
+direnv exec ../codetracer bash mcr/linux-x86_64/regenerate.sh
+```
+
+#### TODO: Add portable trace export to all regeneration scripts
+
+All platform `regenerate.sh` scripts should produce both `trace.ct` (raw)
+and `trace-portable.ct` (enriched via `ct-mcr export --portable`).
+See `mcr/linux-x86_64/regenerate.sh` for the reference implementation.
 ## Standard Recordings
 
 All standard test programs compute the same values: `calculate_sum(10, 32)` = 483,
@@ -119,6 +153,11 @@ For iOS ARM64 (requires Xcode with iOS simulator):
 direnv exec ../codetracer-native-recorder bash mcr/ios-arm64/regenerate.sh
 ```
 
+For Linux ARM64 (must be run on an ARM64 host):
+
+```bash
+direnv exec ../codetracer-native-recorder bash mcr/linux-arm64/regenerate.sh
+```
 For Windows x86_64:
 
 ```powershell
@@ -147,12 +186,13 @@ Each RR recording follows the standard CodeTracer trace folder layout:
 programs/
   ct_fixture_prog.c            # Shared source for MCR recordings
 mcr/<platform>/
-  trace.ct                     # CTFS container (no embedded binaries)
-  binaries/                    # Compiled program binary for this platform
-    ct_fixture_prog            # Mach-O / ELF / PE binary
-  source.c                     # Symlink to ../../programs/ct_fixture_prog.c
-  regenerate.sh / regenerate.ps1  # Script to rebuild binary + re-record trace
-  README.md                    # Platform-specific details
+  trace.ct                       # Raw CTFS container (no embedded binaries)
+  trace-portable.ct              # Enriched trace (binaries + debug symbols)
+  binaries/                      # Compiled program binary for this platform
+    ct_fixture_prog              # Mach-O / ELF / PE binary
+  source.c                       # Symlink to ../../programs/ct_fixture_prog.c
+  regenerate.sh / regenerate.ps1 # Script to build + record + export portable
+  README.md                      # Platform-specific details
 ```
 
 ## Usage in tests
