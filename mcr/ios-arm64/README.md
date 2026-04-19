@@ -17,7 +17,8 @@ EVENT_BATCH messages, and the receiver assembles them into a CTFS
 |------|-------------|
 | `trace.ct` | CTFS recording (10 EVENT_BATCH messages, 50 events, no embedded binaries) |
 | `binaries/ios_ctsp_client` | ARM64 Mach-O executable (iOS simulator target) |
-| `source.c` | CTSP client source code |
+| `source.c` | Symlink to `../../programs/ctsp_client.c` (shared CTSP client source). |
+| `regenerate.sh` | Script to rebuild the binary and re-record the trace. |
 
 ## Device info
 
@@ -25,20 +26,22 @@ EVENT_BATCH messages, and the receiver assembles them into a CTFS
 - OS: iOS 26.2 (simulator)
 - Architecture: arm64
 
-## Regeneration
+## How to regenerate
 
 ```bash
-cd codetracer-native-recorder
-
-# Compile for iOS simulator
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
-xcrun --sdk iphonesimulator clang \
-  -target arm64-apple-ios18.0-simulator -O0 -g \
-  -o ios_ctsp_client ct_cooperative/tests/android_ctsp_client.c
-
-# Start receiver, spawn on simulator
-stream_receiver 14292 trace.ct &
-xcrun simctl spawn <UDID> ./ios_ctsp_client 127.0.0.1 14292
+# From the codetracer-example-recordings repo root, inside the
+# codetracer-native-recorder nix dev shell:
+direnv exec ../codetracer-native-recorder bash mcr/ios-arm64/regenerate.sh
 ```
 
 Requires Xcode with iOS simulator runtime installed.
+
+## Usage in tests
+
+Used by DAP integration tests as a fixture for iOS ARM64 replay.
+
+Tests can:
+1. Load `trace.ct` directly for DAP inspection (metadata, events, registers).
+2. Read the binary from `binaries/ios_ctsp_client` and embed it into a copy of
+   the trace to test binary-aware replay.
+3. Verify that replay works both with and without the original binary present.

@@ -7,7 +7,7 @@ Pre-made `.ct` recording from an Apple Silicon Mac (M1) for DAP integration test
 - **Platform:** aarch64-apple-macosx
 - **Recording mode:** cooperative
 - **Tick source:** compiler
-- **Program:** `ct_fixture_prog` (compiled from `source.c`)
+- **Program:** `ct_fixture_prog` (compiled from `programs/ct_fixture_prog.c`)
 - **Threads:** 4 (1 main + 3 workers)
 - **Events:** 25 total
 - **Checkpoints:** 1
@@ -18,8 +18,9 @@ Pre-made `.ct` recording from an Apple Silicon Mac (M1) for DAP integration test
 | File | Description |
 |------|-------------|
 | `trace.ct` | CTFS container with event streams, memory snapshot, register checkpoint, and checkpoint index. Does NOT contain embedded binaries or filemap. |
-| `binaries/ct_fixture_prog` | ARM64 Mach-O executable compiled from `source.c` with `-g -O0`. |
-| `source.c` | C source code of the recorded program. |
+| `binaries/ct_fixture_prog` | ARM64 Mach-O executable compiled from `programs/ct_fixture_prog.c` with `-g -O0`. |
+| `source.c` | Symlink to `../../programs/ct_fixture_prog.c` (shared source). |
+| `regenerate.sh` | Script to rebuild the binary and re-record the trace. |
 
 ## What the program does
 
@@ -46,30 +47,17 @@ The `.ct` trace contains:
 
 ## How to regenerate
 
-### Prerequisites
-
-- macOS on Apple Silicon (ARM64)
-- Nix dev shell from `codetracer-native-recorder`
-
-### Steps
-
 ```bash
-# 1. Compile the test binary
-cc -g -O0 -o mcr/cooperative-macos-arm64/binaries/ct_fixture_prog \
-  mcr/cooperative-macos-arm64/source.c -lpthread
+# From the codetracer-example-recordings repo root, inside the
+# codetracer-native-recorder nix dev shell:
+direnv exec ../codetracer-native-recorder bash mcr/macos-arm64/regenerate.sh
 
-# 2. Generate the trace (from the native-recorder repo)
-cd ~/metacraft/codetracer-native-recorder
-direnv exec . nim c -r ct_cooperative/tests/generate_recording_fixture.nim -- \
-  --output=~/metacraft/codetracer-example-recordings/mcr/cooperative-macos-arm64/trace.ct \
-  --program=ct_fixture_prog
-```
-
-Or use the all-in-one fixture generator:
-
-```bash
-cd ~/metacraft/codetracer-native-recorder
-./ct_cooperative/tests/generate_fixtures.sh
+# Or step by step:
+cc -O0 -g -lpthread -o mcr/macos-arm64/binaries/ct_fixture_prog programs/ct_fixture_prog.c
+cd ../codetracer-native-recorder
+nim c -r ct_cooperative/tests/generate_recording_fixture.nim -- \
+  --output=~/metacraft/codetracer-example-recordings/mcr/macos-arm64/trace.ct \
+  --program=~/metacraft/codetracer-example-recordings/mcr/macos-arm64/binaries/ct_fixture_prog
 ```
 
 ## Usage in tests

@@ -42,13 +42,6 @@ The following platform recordings are planned but not yet captured:
 
 - `mcr/linux-arm64/` — recording from Linux ARM64
 
-#### TODO: Add regeneration scripts for existing platforms
-
-The `mcr/linux-x86_64/` recording has a `regenerate.sh` script. The macOS,
-Android, and iOS recordings should also get equivalent scripts and should
-reference the shared source at `programs/ct_fixture_prog.c` instead of
-keeping per-platform copies.
-
 ## Standard Recordings
 
 All standard test programs compute the same values: `calculate_sum(10, 32)` = 483,
@@ -58,7 +51,8 @@ All standard test programs compute the same values: `calculate_sum(10, 32)` = 48
 
 The `programs/` directory contains source programs used to create recordings:
 
-- `programs/ct_fixture_prog.c` — shared cross-platform C source for all MCR platform recordings (uses `#ifdef _WIN32` for platform-specific I/O and threading)
+- `programs/ct_fixture_prog.c` — shared cross-platform C source for MCR platform recordings using local recording (uses `#ifdef _WIN32` for platform-specific I/O and threading)
+- `programs/ctsp_client.c` — shared CTSP network client source for MCR mobile recordings (Android, iOS)
 - `programs/python_flow_test.py` — Python flow test
 - `programs/ruby_flow_test.rb` — Ruby flow test
 
@@ -105,6 +99,24 @@ Each MCR platform has its own `README.md` and regeneration script. For Linux x86
 ```bash
 # From repo root, inside the codetracer-native-recorder nix dev shell:
 direnv exec ../codetracer-native-recorder bash mcr/linux-x86_64/regenerate.sh
+```
+
+For macOS ARM64:
+
+```bash
+direnv exec ../codetracer-native-recorder bash mcr/macos-arm64/regenerate.sh
+```
+
+For Android ARM64 (requires connected phone):
+
+```bash
+direnv exec ../codetracer-native-recorder bash mcr/android-arm64/regenerate.sh
+```
+
+For iOS ARM64 (requires Xcode with iOS simulator):
+
+```bash
+direnv exec ../codetracer-native-recorder bash mcr/ios-arm64/regenerate.sh
 ```
 
 For Windows x86_64:
