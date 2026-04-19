@@ -1,15 +1,23 @@
-// source.c — test program for MCR cooperative-mode recording fixtures.
+// ct_fixture_prog.c — cross-platform test program for MCR recording fixtures.
 //
 // Exercises the features needed for DAP integration testing:
 // - Multiple functions (calltrace)
 // - Loops (tick counting)
-// - Syscalls (event recording via open/read/close)
+// - I/O (event recording via platform-native file APIs)
 // - Thread creation (multi-thread support)
+//
+// Platform-specific sections use #ifdef _WIN32 for Windows (Win32 APIs)
+// and POSIX APIs elsewhere (Linux, macOS, Android, iOS).
 
 #include <stdio.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <pthread.h>
+
+#ifdef _WIN32
+  #include <windows.h>
+#else
+  #include <fcntl.h>
+  #include <unistd.h>
+  #include <pthread.h>
+#endif
 
 // ---------------------------------------------------------------------------
 // Pure computation (generates ticks from compiler instrumentation)
@@ -42,12 +50,24 @@ int sum_with_while(int n) {
 }
 
 // ---------------------------------------------------------------------------
-// Syscall-heavy function (generates open/read/close events)
+// I/O (generates file open/read/close events via platform-native APIs)
 // ---------------------------------------------------------------------------
 
-int read_dev_null(int iterations) {
+int read_null_device(int iterations) {
   int total_bytes = 0;
   for (int i = 0; i < iterations; i++) {
+#ifdef _WIN32
+    HANDLE h = CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ,
+                           NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (h != INVALID_HANDLE_VALUE) {
+      char buf[64];
+      DWORD n = 0;
+      if (ReadFile(h, buf, sizeof(buf), &n, NULL)) {
+        total_bytes += (int)n;
+      }
+      CloseHandle(h);
+    }
+#else
     int fd = open("/dev/null", O_RDONLY);
     if (fd >= 0) {
       char buf[64];
@@ -55,6 +75,7 @@ int read_dev_null(int iterations) {
       if (n >= 0) total_bytes += (int)n;
       close(fd);
     }
+#endif
   }
   return total_bytes;
 }
@@ -68,6 +89,33 @@ typedef struct {
   int iterations;
   int result;
 } WorkerArg;
+
+#ifdef _WIN32
+
+DWORD WINAPI worker_thread(LPVOID arg) {
+  WorkerArg *wa = (WorkerArg *)arg;
+
+  // Computation ticks
+  int sum = 0;
+  for (int i = 0; i < wa->iterations; i++) {
+    sum += i * wa->worker_id;
+  }
+
+  // I/O events
+  HANDLE h = CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ,
+                         NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+  if (h != INVALID_HANDLE_VALUE) {
+    char buf[16];
+    DWORD n = 0;
+    ReadFile(h, buf, sizeof(buf), &n, NULL);
+    CloseHandle(h);
+  }
+
+  wa->result = sum;
+  return 0;
+}
+
+#else
 
 void *worker_thread(void *arg) {
   WorkerArg *wa = (WorkerArg *)arg;
@@ -90,13 +138,15 @@ void *worker_thread(void *arg) {
   return NULL;
 }
 
+#endif
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
 int main(void) {
   // Phase 1: computation (ticks)
-  int s1 = calculate_sum(10, 32);    // expected: 94 + ... = 483 (sum 10..32)
+  int s1 = calculate_sum(10, 32);    // expected: 483 (sum 10..32)
   int s2 = sum_with_for(9);          // expected: 45
   int s3 = sum_with_while(9);        // expected: 45
 
@@ -104,14 +154,32 @@ int main(void) {
   printf("sum_with_for(9) = %d\n", s2);
   printf("sum_with_while(9) = %d\n", s3);
 
-  // Phase 2: syscalls (events)
-  int bytes = read_dev_null(5);
-  printf("read_dev_null(5) = %d bytes\n", bytes);
+  // Phase 2: I/O (events)
+  int bytes = read_null_device(5);
+  printf("read_null_device(5) = %d bytes\n", bytes);
 
   // Phase 3: threads
-  const int NUM_WORKERS = 3;
-  pthread_t threads[3];
-  WorkerArg args[3];
+  #define NUM_WORKERS 3
+  WorkerArg args[NUM_WORKERS];
+
+#ifdef _WIN32
+  HANDLE threads[NUM_WORKERS];
+
+  for (int i = 0; i < NUM_WORKERS; i++) {
+    args[i].worker_id = i + 1;
+    args[i].iterations = 100;
+    args[i].result = 0;
+    threads[i] = CreateThread(NULL, 0, worker_thread, &args[i], 0, NULL);
+  }
+
+  WaitForMultipleObjects(NUM_WORKERS, threads, TRUE, INFINITE);
+
+  for (int i = 0; i < NUM_WORKERS; i++) {
+    CloseHandle(threads[i]);
+    printf("worker %d result = %d\n", i + 1, args[i].result);
+  }
+#else
+  pthread_t threads[NUM_WORKERS];
 
   for (int i = 0; i < NUM_WORKERS; i++) {
     args[i].worker_id = i + 1;
@@ -124,6 +192,7 @@ int main(void) {
     pthread_join(threads[i], NULL);
     printf("worker %d result = %d\n", i + 1, args[i].result);
   }
+#endif
 
   // Phase 4: final computation
   int final_sum = s1 + s2 + s3;

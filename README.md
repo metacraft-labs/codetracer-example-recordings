@@ -25,6 +25,7 @@ was produced by a real CodeTracer recorder over a real program.
 | Linux x86_64 | `mcr/linux-x86_64/` | Linux AMD64 (ct-mcr interpose) | `.ct` (CTFS) |
 | Android ARM64 | `mcr/android-arm64/` | Samsung Galaxy S24 Ultra | `.ct` (CTFS) |
 | iOS ARM64 | `mcr/ios-arm64/` | iPhone 17 Pro simulator | `.ct` (CTFS) |
+| Windows x86_64 | `mcr/windows-x86_64/` | Windows 11 x64 (ct-mcr interpose) | `.ct` (CTFS) |
 
 MCR recordings are stored **without embedded binaries**. The recorded
 program's binary is stored separately in a `binaries/` subdirectory.
@@ -40,7 +41,6 @@ This allows tests to exercise both scenarios:
 The following platform recordings are planned but not yet captured:
 
 - `mcr/linux-arm64/` — recording from Linux ARM64
-- `mcr/windows-x86_64/` — recording from Windows x86_64
 
 #### TODO: Add regeneration scripts for existing platforms
 
@@ -51,14 +51,14 @@ keeping per-platform copies.
 
 ## Standard Recordings
 
-All standard test programs compute the same values: `calculate_sum(10, 32)` = 94,
+All standard test programs compute the same values: `calculate_sum(10, 32)` = 483,
 `sum_with_for(9)` = 45, `sum_with_while(9)` = 45.
 
 ### Source programs
 
 The `programs/` directory contains source programs used to create recordings:
 
-- `programs/ct_fixture_prog.c` — shared C source for all MCR platform recordings
+- `programs/ct_fixture_prog.c` — shared cross-platform C source for all MCR platform recordings (uses `#ifdef _WIN32` for platform-specific I/O and threading)
 - `programs/python_flow_test.py` — Python flow test
 - `programs/ruby_flow_test.rb` — Ruby flow test
 
@@ -100,12 +100,18 @@ ruby path/to/codetracer-pure-ruby-recorder -o ruby/flow_test programs/ruby_flow_
 
 #### MCR recordings
 
-Each MCR platform has its own `README.md` and (where available) a
-`regenerate.sh` script. For Linux x86_64:
+Each MCR platform has its own `README.md` and regeneration script. For Linux x86_64:
 
 ```bash
 # From repo root, inside the codetracer-native-recorder nix dev shell:
 direnv exec ../codetracer-native-recorder bash mcr/linux-x86_64/regenerate.sh
+```
+
+For Windows x86_64:
+
+```powershell
+# From repo root, in a VS Developer PowerShell:
+.\mcr\windows-x86_64\regenerate.ps1
 ```
 
 See each recording's own `README.md` for platform-specific details.
@@ -133,7 +139,7 @@ mcr/<platform>/
   binaries/                    # Compiled program binary for this platform
     ct_fixture_prog            # Mach-O / ELF / PE binary
   source.c                     # Symlink to ../../programs/ct_fixture_prog.c
-  regenerate.sh                # Script to rebuild binary + re-record trace
+  regenerate.sh / regenerate.ps1  # Script to rebuild binary + re-record trace
   README.md                    # Platform-specific details
 ```
 
