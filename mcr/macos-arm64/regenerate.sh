@@ -68,9 +68,11 @@ echo "  ct-mcr: $CT_MCR"
 echo ""
 
 # Step 4: Export as portable trace (for GUI E2E tests)
+# The cooperative trace stores just the program name without path,
+# so run the export from the binaries dir where the binary can be found.
 echo ">>> Exporting portable trace..."
 rm -f "$PORTABLE"
-"$CT_MCR" export --portable -v -o "$PORTABLE" "$TRACE"
+(cd "$SCRIPT_DIR/binaries" && "$CT_MCR" export --portable -v -o "$PORTABLE" "$TRACE")
 echo ""
 
 # Step 5: Verify

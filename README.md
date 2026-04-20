@@ -60,10 +60,10 @@ that produces both `trace.ct` and `trace-portable.ct`. Status:
 | Platform | `regenerate.sh` | `trace.ct` | `trace-portable.ct` | Notes |
 |----------|----------------|------------|---------------------|-------|
 | linux-x86_64 | done | done | done | Reference implementation |
-| macos-arm64 | done | done (synthetic) | TODO | Run on Apple Silicon Mac to regenerate |
+| macos-arm64 | done | done (synthetic) | done | — |
 | windows-x86_64 | done (.ps1) | done | done | — |
-| android-arm64 | done | done | TODO | Run with connected device to regenerate |
-| ios-arm64 | done | done | TODO | Run with Xcode + simulator to regenerate |
+| android-arm64 | done | done | done | — |
+| ios-arm64 | done | done | done | — |
 | linux-arm64 | TODO | TODO | TODO | Run on ARM64 Linux host |
 
 To regenerate a platform (example for Linux x86_64):

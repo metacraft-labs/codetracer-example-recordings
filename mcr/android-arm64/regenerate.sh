@@ -210,9 +210,16 @@ echo "  ct-mcr: $CT_MCR"
 echo ""
 
 # Step 9: Export as portable trace (for GUI E2E tests)
+# The stream receiver stores the program name from CTSP metadata (android_e2e_test),
+# not the actual binary path. Create a temp symlink so the export can find it.
 echo ">>> Exporting portable trace..."
 rm -f "$PORTABLE"
-"$CT_MCR" export --portable -v -o "$PORTABLE" "$TRACE"
+TRACE_PROGRAM=$("$CT_MCR" trace info "$TRACE" 2>/dev/null | grep "^program:" | sed 's/^program: //')
+if [ -n "$TRACE_PROGRAM" ] && [ ! -f "$SCRIPT_DIR/binaries/$TRACE_PROGRAM" ]; then
+  ln -sf "$(basename "$BINARY")" "$SCRIPT_DIR/binaries/$TRACE_PROGRAM"
+fi
+(cd "$SCRIPT_DIR/binaries" && "$CT_MCR" export --portable -v -o "$PORTABLE" "$TRACE")
+rm -f "$SCRIPT_DIR/binaries/$TRACE_PROGRAM"
 echo ""
 
 # Step 10: Verify
