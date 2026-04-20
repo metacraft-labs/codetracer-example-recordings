@@ -1,28 +1,32 @@
 #!/usr/bin/env bash
 # Regenerate the iOS ARM64 MCR recording fixture.
 #
+# Produces TWO outputs:
+#   1. trace.ct — raw CTSP recording (for emulator unit tests)
+#   2. trace-portable.ct — enriched portable trace with binaries,
+#      debug symbols, and source files (for GUI E2E tests)
+#
 # Prerequisites:
 #   - macOS with Xcode (provides xcrun, simctl, iOS simulator SDK)
 #   - A booted iOS simulator (or one will be booted automatically)
-#   - Nix dev shell from codetracer-native-recorder (for building stream-receiver)
-#
-# This script:
-#   1. Compiles the CTSP client for the iOS simulator target
-#   2. Builds the stream-receiver helper on the Mac
-#   3. Spawns the binary on the simulator and receives the trace
+#   - Nix dev shell from codetracer (provides nim, ct-mcr)
 #
 # Run from the codetracer-example-recordings repo root:
-#   direnv exec ../codetracer-native-recorder bash mcr/ios-arm64/regenerate.sh
+#   direnv exec ../codetracer bash mcr/ios-arm64/regenerate.sh
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# Locate sibling repos
+CODETRACER="${CODETRACER:-$(cd "$REPO_ROOT/../codetracer" && pwd)}"
 NATIVE_RECORDER="${NATIVE_RECORDER:-$(cd "$REPO_ROOT/../codetracer-native-recorder" && pwd)}"
 
 SOURCE="$REPO_ROOT/programs/ctsp_client.c"
 BINARY="$SCRIPT_DIR/binaries/ios_ctsp_client"
 TRACE="$SCRIPT_DIR/trace.ct"
+PORTABLE="$SCRIPT_DIR/trace-portable.ct"
 
 CTSP_PORT=14292
 
@@ -49,6 +53,7 @@ echo "=== Regenerating iOS ARM64 MCR fixture ==="
 echo "  Source: $SOURCE"
 echo "  Binary: $BINARY"
 echo "  Trace:  $TRACE"
+echo "  Portable: $PORTABLE"
 echo ""
 
 # Step 1: Find a booted iOS simulator
@@ -150,8 +155,7 @@ if ! kill -0 "$RECEIVER_PID" 2>/dev/null; then
   exit 1
 fi
 
-# Copy binary into simulator's data directory and spawn it
-# (simctl spawn requires the binary to be accessible to the simulator)
+# simctl spawn requires the binary to be accessible to the simulator
 xcrun simctl spawn "$SIM_UDID" "$BINARY" 127.0.0.1 "$CTSP_PORT"
 echo ""
 
@@ -177,8 +181,32 @@ if [ ! -f "$TRACE" ]; then
   exit 1
 fi
 
-# Step 6: Verify
+# Step 6: Find ct-mcr
+CT_MCR=""
+if [ -x "$NATIVE_RECORDER/ct_cli/ct_cli" ]; then
+	CT_MCR="$NATIVE_RECORDER/ct_cli/ct_cli"
+elif command -v ct-mcr &>/dev/null; then
+	CT_MCR=$(command -v ct-mcr)
+fi
+
+if [ -z "$CT_MCR" ]; then
+	echo ">>> Building ct-mcr..."
+	(cd "$NATIVE_RECORDER" && just build-ct-mcr)
+	CT_MCR="$NATIVE_RECORDER/ct_cli/ct_cli"
+fi
+echo "  ct-mcr: $CT_MCR"
+echo ""
+
+# Step 7: Export as portable trace (for GUI E2E tests)
+echo ">>> Exporting portable trace..."
+rm -f "$PORTABLE"
+"$CT_MCR" export --portable -v -o "$PORTABLE" "$TRACE"
+echo ""
+
+# Step 8: Verify
 TRACE_SIZE=$(wc -c < "$TRACE" | tr -d ' ')
+PORTABLE_SIZE=$(wc -c < "$PORTABLE" | tr -d ' ')
 echo "=== Done ==="
-echo "  trace.ct: $TRACE_SIZE bytes"
-echo "  binary:   $(wc -c < "$BINARY" | tr -d ' ') bytes"
+echo "  trace.ct:          $TRACE_SIZE bytes (raw, for emulator tests)"
+echo "  trace-portable.ct: $PORTABLE_SIZE bytes (enriched, for GUI E2E)"
+echo "  binary:            $(wc -c < "$BINARY" | tr -d ' ') bytes"

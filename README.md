@@ -62,8 +62,8 @@ that produces both `trace.ct` and `trace-portable.ct`. Status:
 | linux-x86_64 | done | done | done | Reference implementation |
 | macos-arm64 | done | done (synthetic) | TODO | Run on Apple Silicon Mac to regenerate |
 | windows-x86_64 | done (.ps1) | done | done | — |
-| android-arm64 | TODO | done | TODO | Requires connected device |
-| ios-arm64 | TODO | done | TODO | Requires Xcode + simulator |
+| android-arm64 | done | done | TODO | Run with connected device to regenerate |
+| ios-arm64 | done | done | TODO | Run with Xcode + simulator to regenerate |
 | linux-arm64 | TODO | TODO | TODO | Run on ARM64 Linux host |
 
 To regenerate a platform (example for Linux x86_64):
@@ -131,32 +131,32 @@ ruby path/to/codetracer-pure-ruby-recorder -o ruby/flow_test programs/ruby_flow_
 Each MCR platform has its own `README.md` and regeneration script. For Linux x86_64:
 
 ```bash
-# From repo root, inside the codetracer-native-recorder nix dev shell:
-direnv exec ../codetracer-native-recorder bash mcr/linux-x86_64/regenerate.sh
+# From repo root, inside the codetracer nix dev shell:
+direnv exec ../codetracer bash mcr/linux-x86_64/regenerate.sh
 ```
 
 For macOS ARM64:
 
 ```bash
-direnv exec ../codetracer-native-recorder bash mcr/macos-arm64/regenerate.sh
+direnv exec ../codetracer bash mcr/macos-arm64/regenerate.sh
 ```
 
 For Android ARM64 (requires connected phone):
 
 ```bash
-direnv exec ../codetracer-native-recorder bash mcr/android-arm64/regenerate.sh
+direnv exec ../codetracer bash mcr/android-arm64/regenerate.sh
 ```
 
 For iOS ARM64 (requires Xcode with iOS simulator):
 
 ```bash
-direnv exec ../codetracer-native-recorder bash mcr/ios-arm64/regenerate.sh
+direnv exec ../codetracer bash mcr/ios-arm64/regenerate.sh
 ```
 
 For Linux ARM64 (must be run on an ARM64 host):
 
 ```bash
-direnv exec ../codetracer-native-recorder bash mcr/linux-arm64/regenerate.sh
+direnv exec ../codetracer bash mcr/linux-arm64/regenerate.sh
 ```
 For Windows x86_64:
 

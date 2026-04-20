@@ -15,10 +15,11 @@ EVENT_BATCH messages, and the receiver assembles them into a CTFS
 
 | File | Description |
 |------|-------------|
-| `trace.ct` | CTFS recording (10 EVENT_BATCH messages, 50 events, no embedded binaries) |
+| `trace.ct` | Raw CTFS recording (10 EVENT_BATCH messages, 50 events, no embedded binaries). For emulator unit tests. |
+| `trace-portable.ct` | Enriched portable trace with embedded binaries and debug symbols. For GUI E2E tests via `ct host --trace-path`. |
 | `binaries/ios_ctsp_client` | ARM64 Mach-O executable (iOS simulator target) |
 | `source.c` | Symlink to `../../programs/ctsp_client.c` (shared CTSP client source). |
-| `regenerate.sh` | Script to rebuild the binary and re-record the trace. |
+| `regenerate.sh` | Script to rebuild the binary, record the trace, and export the portable trace. |
 
 ## Device info
 
@@ -29,12 +30,13 @@ EVENT_BATCH messages, and the receiver assembles them into a CTFS
 ## How to regenerate
 
 ```bash
-# From the codetracer-example-recordings repo root, inside the
-# codetracer-native-recorder nix dev shell:
-direnv exec ../codetracer-native-recorder bash mcr/ios-arm64/regenerate.sh
+# From the codetracer-example-recordings repo root, inside the codetracer nix dev shell:
+direnv exec ../codetracer bash mcr/ios-arm64/regenerate.sh
 ```
 
 Requires Xcode with iOS simulator runtime installed.
+
+This produces both `trace.ct` (raw) and `trace-portable.ct` (enriched).
 
 ## Usage in tests
 
