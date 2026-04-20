@@ -60,7 +60,7 @@ that produces both `trace.ct` and `trace-portable.ct`. Status:
 | Platform | `regenerate.sh` | `trace.ct` | `trace-portable.ct` | Notes |
 |----------|----------------|------------|---------------------|-------|
 | linux-x86_64 | done | done | done | Reference implementation |
-| macos-arm64 | TODO | done (synthetic) | TODO | Run on Apple Silicon Mac |
+| macos-arm64 | done | done (synthetic) | TODO | Run on Apple Silicon Mac to regenerate |
 | windows-x86_64 | done (.ps1) | done | TODO | Add portable export to .ps1 |
 | android-arm64 | TODO | done | TODO | Requires connected device |
 | ios-arm64 | TODO | done | TODO | Requires Xcode + simulator |

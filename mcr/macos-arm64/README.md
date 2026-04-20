@@ -17,10 +17,11 @@ Pre-made `.ct` recording from an Apple Silicon Mac (M1) for DAP integration test
 
 | File | Description |
 |------|-------------|
-| `trace.ct` | CTFS container with event streams, memory snapshot, register checkpoint, and checkpoint index. Does NOT contain embedded binaries or filemap. |
+| `trace.ct` | Raw CTFS container with event streams, memory snapshot, register checkpoint, and checkpoint index. Does NOT contain embedded binaries or filemap. |
+| `trace-portable.ct` | Enriched portable trace with embedded binaries, debug symbols, and source file references. For GUI E2E tests via `ct host --trace-path`. |
 | `binaries/ct_fixture_prog` | ARM64 Mach-O executable compiled from `programs/ct_fixture_prog.c` with `-g -O0`. |
 | `source.c` | Symlink to `../../programs/ct_fixture_prog.c` (shared source). |
-| `regenerate.sh` | Script to rebuild the binary and re-record the trace. |
+| `regenerate.sh` | Script to rebuild the binary, record the trace, and export the portable trace. |
 
 ## What the program does
 
@@ -48,17 +49,11 @@ The `.ct` trace contains:
 ## How to regenerate
 
 ```bash
-# From the codetracer-example-recordings repo root, inside the
-# codetracer-native-recorder nix dev shell:
-direnv exec ../codetracer-native-recorder bash mcr/macos-arm64/regenerate.sh
-
-# Or step by step:
-cc -O0 -g -lpthread -o mcr/macos-arm64/binaries/ct_fixture_prog programs/ct_fixture_prog.c
-cd ../codetracer-native-recorder
-nim c -r ct_cooperative/tests/generate_recording_fixture.nim -- \
-  --output=~/metacraft/codetracer-example-recordings/mcr/macos-arm64/trace.ct \
-  --program=~/metacraft/codetracer-example-recordings/mcr/macos-arm64/binaries/ct_fixture_prog
+# From the codetracer-example-recordings repo root, inside the codetracer nix dev shell:
+direnv exec ../codetracer bash mcr/macos-arm64/regenerate.sh
 ```
+
+This produces both `trace.ct` (raw) and `trace-portable.ct` (enriched).
 
 ## Usage in tests
 
