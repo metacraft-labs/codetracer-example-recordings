@@ -1,14 +1,14 @@
 # Regenerate the Windows x86_64 MCR recording fixture.
 #
+# Produces TWO outputs:
+#   1. trace.ct — raw MCR recording (for emulator unit tests)
+#   2. trace-portable.ct — enriched portable trace with binaries,
+#      debug symbols, and source files (for GUI E2E tests)
+#
 # Prerequisites:
 #   - Windows x86_64 host
 #   - Visual Studio Build Tools (provides cl.exe)
 #   - ct-mcr.exe built from codetracer-native-recorder
-#
-# This script:
-#   1. Enters a VS Developer Shell (for cl.exe)
-#   2. Compiles the shared ct_fixture_prog source into an x86_64 PE binary
-#   3. Records it with ct-mcr (interpose mode) to produce trace.ct
 #
 # Run from the codetracer-example-recordings repo root:
 #   .\mcr\windows-x86_64\regenerate.ps1
@@ -25,15 +25,17 @@ $NativeRecorder = if ($env:NATIVE_RECORDER) { $env:NATIVE_RECORDER } else {
   Resolve-Path (Join-Path $RepoRoot "..\codetracer-native-recorder") | Select-Object -ExpandProperty Path
 }
 
-$Source = Join-Path $RepoRoot "programs\ct_fixture_prog.c"
-$Binary = Join-Path $ScriptDir "binaries\ct_fixture_prog.exe"
-$Trace  = Join-Path $ScriptDir "trace.ct"
-$CtMcr  = Join-Path $NativeRecorder "ct_cli\ct_mcr.exe"
+$Source   = Join-Path $RepoRoot "programs\ct_fixture_prog.c"
+$Binary   = Join-Path $ScriptDir "binaries\ct_fixture_prog.exe"
+$Trace    = Join-Path $ScriptDir "trace.ct"
+$Portable = Join-Path $ScriptDir "trace-portable.ct"
+$CtMcr    = Join-Path $NativeRecorder "ct_cli\ct_mcr.exe"
 
 Write-Host "=== Regenerating Windows x86_64 MCR fixture ==="
-Write-Host "  Source: $Source"
-Write-Host "  Binary: $Binary"
-Write-Host "  Trace:  $Trace"
+Write-Host "  Source:   $Source"
+Write-Host "  Binary:   $Binary"
+Write-Host "  Trace:    $Trace"
+Write-Host "  Portable: $Portable"
 Write-Host ""
 
 # Step 1: Enter VS Developer Shell (for cl.exe)
@@ -69,8 +71,8 @@ Remove-Item -Path (Join-Path (Split-Path $Binary) "*.ilk") -Force -ErrorAction S
 Remove-Item -Path (Join-Path (Split-Path $Binary) "*.pdb") -Force -ErrorAction SilentlyContinue
 Write-Host ""
 
-# Step 3: Record
-Write-Host ">>> Recording with ct-mcr..."
+# Step 3: Record raw trace
+Write-Host ">>> Recording with ct-mcr (raw)..."
 if (-not (Test-Path $CtMcr)) {
     throw "ct-mcr not found at $CtMcr. Build it from codetracer-native-recorder first."
 }
@@ -78,9 +80,17 @@ Remove-Item -Path $Trace -Force -ErrorAction SilentlyContinue
 & $CtMcr record --use-interpose -o $Trace -- $Binary
 Write-Host ""
 
-# Step 4: Verify
+# Step 4: Export portable trace (for GUI E2E tests)
+Write-Host ">>> Exporting portable trace..."
+Remove-Item -Path $Portable -Force -ErrorAction SilentlyContinue
+& $CtMcr export --portable -v -o $Portable $Trace
+Write-Host ""
+
+# Step 5: Verify
 $TraceSize = (Get-Item $Trace).Length
+$PortableSize = (Get-Item $Portable).Length
 $BinarySize = (Get-Item $Binary).Length
 Write-Host "=== Done ==="
-Write-Host "  trace.ct: $TraceSize bytes"
-Write-Host "  binary:   $BinarySize bytes"
+Write-Host "  trace.ct:          $TraceSize bytes (raw, for emulator tests)"
+Write-Host "  trace-portable.ct: $PortableSize bytes (enriched, for GUI E2E)"
+Write-Host "  binary:            $BinarySize bytes"
