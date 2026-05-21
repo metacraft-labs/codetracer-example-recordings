@@ -16,6 +16,7 @@ was produced by a real CodeTracer recorder over a real program.
 | Nim | `nim/flow_test/` | `ct-rr-support` (RR) | RR trace + metadata |
 | Python | `python/flow_test/` | `codetracer-python-recorder` | CBOR+zstd binary |
 | Ruby | `ruby/flow_test/` | `codetracer-pure-ruby-recorder` | JSON |
+| JavaScript | `javascript/flow_test/` | `codetracer-js-recorder` | CTFS container |
 
 ### MCR Recordings
 
@@ -89,6 +90,7 @@ The `programs/` directory contains source programs used to create recordings:
 - `programs/ctsp_client.c` — shared CTSP network client source for MCR mobile recordings (Android, iOS)
 - `programs/python_flow_test.py` — Python flow test
 - `programs/ruby_flow_test.rb` — Ruby flow test
+- `programs/javascript_flow_test.js` — JavaScript flow test
 
 The RR-based recordings (Rust, C, Go, Nim) use test programs from the
 `codetracer` repo at `src/db-backend/test-programs/<lang>/`.
