@@ -15,7 +15,7 @@ was produced by a real CodeTracer recorder over a real program.
 | Go | `go/flow_test/` | `ct-rr-support` (RR) | RR trace + metadata |
 | Nim | `nim/flow_test/` | `ct-rr-support` (RR) | RR trace + metadata |
 | Python | `python/flow_test/` | `codetracer-python-recorder` | CBOR+zstd binary |
-| Ruby | `ruby/flow_test/` | `codetracer-pure-ruby-recorder` | JSON |
+| Ruby | `ruby/flow_test/` | `codetracer-ruby-recorder` (native) | CTFS container |
 | JavaScript | `javascript/flow_test/` | `codetracer-js-recorder` | CTFS container |
 
 ### MCR Recordings
@@ -124,8 +124,56 @@ codetracer-python-recorder --trace-dir python/flow_test --format binary programs
 
 #### Ruby recording
 
+The Ruby fixture is produced by the native `codetracer-ruby-recorder`
+(the production recorder per `codetracer-ruby-recorder/AGENTS.md` — the
+pure-Ruby reference implementation is not intended for CodeTracer
+integration). The native recorder emits a single CTFS v3+ binary trace
+bundle (`<program>.ct`). For the integration-test fixture we rename the
+bundle to `trace.json` so it matches the spec's expected materialized
+layout (`trace.bin`/`trace.json` next to `trace_metadata.json` /
+`trace_paths.json`); the host detects the CTFS magic and routes the
+payload through the normal CTFS replay path (see
+`codetracer/src/ct/trace/host.nim` ~line 574 — "Some 'materialized'
+trace folders ship a `trace.bin` that is in fact a CTFS container...").
+
 ```bash
-ruby path/to/codetracer-pure-ruby-recorder -o ruby/flow_test programs/ruby_flow_test.rb
+# Stage the source so the recording's recorded workdir matches the
+# fixture-shipped /tmp/ct-example-recordings-build/ path used by other
+# fixtures (Python, JavaScript).
+mkdir -p /tmp/ct-example-recordings-build
+cp programs/ruby_flow_test.rb /tmp/ct-example-recordings-build/
+
+# Record (run from /tmp/ct-example-recordings-build so the recorded
+# program path is just `ruby_flow_test.rb` rather than an absolute path
+# rooted in this checkout).
+cd /tmp/ct-example-recordings-build
+codetracer-ruby-recorder --out-dir . ruby_flow_test.rb
+
+# Install into the fixture directory as `trace.json` (the integration
+# test expects this name; CTFS-magic detection in `ct host` rewrites it
+# to `trace.ct` at import time).
+mv ruby.ct <repo>/ruby/flow_test/trace.json
+
+# Materialized layout siblings, matching python/javascript fixtures.
+cat > <repo>/ruby/flow_test/trace_metadata.json <<'EOF'
+{
+  "program": "/tmp/ct-example-recordings-build/ruby_flow_test.rb",
+  "args": [],
+  "workdir": "/tmp/ct-example-recordings-build"
+}
+EOF
+cat > <repo>/ruby/flow_test/trace_paths.json <<'EOF'
+[
+  "",
+  "/tmp/ct-example-recordings-build/ruby_flow_test.rb"
+]
+EOF
+
+# Ship the source under the same mirrored absolute path so the host's
+# `files/` layout works for the GUI editor.
+mkdir -p <repo>/ruby/flow_test/files/tmp/ct-example-recordings-build
+cp programs/ruby_flow_test.rb \
+   <repo>/ruby/flow_test/files/tmp/ct-example-recordings-build/
 ```
 
 #### MCR recordings
