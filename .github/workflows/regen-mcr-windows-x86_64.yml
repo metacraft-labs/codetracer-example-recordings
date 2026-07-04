@@ -1,0 +1,123 @@
+# Regenerate the Windows x86_64 MCR recording fixtures.
+#
+# Device-bound fixture: the trace must be recorded on a real Windows x64
+# host (ct-mcr interpose backend + VS Build Tools cl.exe), so it cannot be
+# produced on a developer macOS box.  This runs
+# `mcr/windows-x86_64/regenerate.ps1` on a self-hosted Windows runner.
+#
+# NOTE ON RUNNER LABEL: the sibling repos' existing "Windows Tests"
+# workflow still targets the hosted `windows-latest` image (with a TODO to
+# migrate to a self-hosted Windows runner once provisioned).  This
+# regeneration job needs the full ct-mcr toolchain + the ct-mcr interpose
+# backend, so it targets `[self-hosted, windows]`.  If the self-hosted
+# Windows pool is not yet online, switch `runs-on` to `windows-latest`
+# and ensure VS Build Tools are present.
+#
+# Manual (`workflow_dispatch`) is the safe default; a monthly refresh cron
+# is provided but commented out.
+
+name: "Regenerate MCR (windows-x86_64)"
+
+on:
+  workflow_dispatch:
+    inputs:
+      codetracer_ref:
+        description: "codetracer git ref (windows-diy env provider)"
+        required: false
+        default: "dev"
+      native_recorder_ref:
+        description: "codetracer-native-recorder git ref (ct-mcr.exe source)"
+        required: false
+        default: "main"
+  # Monthly refresh — uncomment to enable.
+  # schedule:
+  #   - cron: "0 4 1 * *" # 04:00 UTC on the 1st of each month
+
+concurrency:
+  group: regen-mcr-windows-x86_64-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  regen-mcr-windows-x86_64:
+    runs-on: [self-hosted, windows]
+    name: regenerate (MCR, windows-x86_64)
+    steps:
+      - name: Generate CI token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.CI_TOKEN_PROVIDER_APP_ID }}
+          private-key: ${{ secrets.CI_TOKEN_PROVIDER_PRIVATE_KEY }}
+          owner: metacraft-labs
+
+      - name: Checkout example recordings
+        uses: actions/checkout@v5
+        with:
+          lfs: true
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Setup dev env (windows-diy)
+        # Clones the codetracer + native-recorder siblings adjacent to this
+        # checkout and dot-sources codetracer's Windows DIY env script
+        # (../codetracer/env.ps1), provisioning nim / just / vcc / zstd so
+        # `just build-ct-mcr` can produce ct_mcr.exe below.
+        uses: metacraft-labs/metacraft-github-actions/setup-dev-env@main
+        with:
+          env-flavor: windows-diy
+          gh-token: ${{ steps.app-token.outputs.token }}
+          env-ps1-path: ${{ github.workspace }}/../codetracer/env.ps1
+          siblings: |
+            codetracer=${{ github.event.inputs.codetracer_ref }}
+            codetracer-native-recorder=${{ github.event.inputs.native_recorder_ref }}
+
+      - name: Build ct-mcr.exe
+        # regenerate.ps1 expects a prebuilt ct_cli/ct_mcr.exe in the
+        # native-recorder sibling (it does not build it itself).  Build it
+        # via the recorder's own recipe, matching how the Linux/macOS regen
+        # scripts call `just build-ct-mcr`.
+        shell: pwsh
+        working-directory: ${{ github.workspace }}/../codetracer-native-recorder
+        run: just build-ct-mcr
+
+      - name: Regenerate windows-x86_64 MCR fixture
+        # Mirrors the documented invocation:
+        #   .\mcr\windows-x86_64\regenerate.ps1
+        shell: pwsh
+        env:
+          NATIVE_RECORDER: ${{ github.workspace }}/../codetracer-native-recorder
+        run: .\mcr\windows-x86_64\regenerate.ps1
+
+      - name: Upload refreshed fixtures artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcr-windows-x86_64
+          path: |
+            mcr/windows-x86_64/trace.ct
+            mcr/windows-x86_64/trace-portable.ct
+            mcr/windows-x86_64/binaries/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Open pull request with refreshed fixtures
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          add-paths: mcr/windows-x86_64
+          branch: regen/mcr-windows-x86_64
+          delete-branch: true
+          title: "Regenerate MCR windows-x86_64 fixtures"
+          commit-message: "chore(mcr): regenerate windows-x86_64 recording fixtures"
+          body: |
+            Automated regeneration of the windows-x86_64 MCR recording
+            fixtures (`trace.ct` + `trace-portable.ct`) produced by
+            `mcr/windows-x86_64/regenerate.ps1` on a self-hosted Windows
+            runner.
+
+            Recorded against:
+            - codetracer @ `${{ github.event.inputs.codetracer_ref }}`
+            - codetracer-native-recorder @ `${{ github.event.inputs.native_recorder_ref }}`

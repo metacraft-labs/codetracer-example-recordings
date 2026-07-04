@@ -1,0 +1,140 @@
+# Regenerate the iOS ARM64 MCR recording fixtures.
+#
+# Device-bound fixture: the trace is recorded by spawning a CTSP client on
+# a booted iOS *simulator* (arm64-apple-ios-simulator) and streaming it
+# back to a Nim receiver.  This requires a macOS runner with Xcode + the
+# iOS simulator SDK installed (`xcrun`, `simctl`).  It cannot run on a
+# Linux/Windows runner or on a macOS runner without Xcode.
+#
+# `mcr/ios-arm64/regenerate.sh` boots the first available iPhone simulator
+# automatically if none is booted.
+#
+# Manual (`workflow_dispatch`) is the safe default; a monthly refresh cron
+# is provided but commented out.
+
+name: "Regenerate MCR (ios-arm64)"
+
+on:
+  workflow_dispatch:
+    inputs:
+      codetracer_ref:
+        description: "codetracer git ref (dev shell provider)"
+        required: false
+        default: "dev"
+      native_recorder_ref:
+        description: "codetracer-native-recorder git ref (ct-mcr + receiver source)"
+        required: false
+        default: "main"
+  # Monthly refresh — uncomment to enable.
+  # schedule:
+  #   - cron: "0 4 1 * *" # 04:00 UTC on the 1st of each month
+
+concurrency:
+  group: regen-mcr-ios-arm64-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  regen-mcr-ios-arm64:
+    # Self-hosted Apple Silicon runner with Xcode + iOS simulator installed.
+    runs-on: [self-hosted, macos]
+    name: regenerate (MCR, ios-arm64)
+    steps:
+      - name: Generate CI token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.CI_TOKEN_PROVIDER_APP_ID }}
+          private-key: ${{ secrets.CI_TOKEN_PROVIDER_PRIVATE_KEY }}
+          owner: metacraft-labs
+
+      - name: Checkout example recordings
+        uses: actions/checkout@v5
+        with:
+          lfs: true
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Verify Xcode / iOS simulator toolchain
+        # Fail fast with a clear message if the runner lacks Xcode's
+        # simctl (the regen script needs a bootable iOS simulator).
+        run: |
+          if ! xcrun simctl help >/dev/null 2>&1; then
+            echo "::error::xcrun simctl unavailable — this runner needs Xcode with the iOS simulator SDK."
+            exit 1
+          fi
+          xcrun --sdk iphonesimulator --show-sdk-path
+
+      - name: Set up Nix
+        uses: metacraft-labs/nixos-modules/.github/setup-nix@main
+        with:
+          trusted-public-keys: ${{ vars.ATTIC_TRUSTED_PUBLIC_KEY }}
+          substituters: ${{ vars.ATTIC_SUBSTITUTER }}
+
+      - name: Configure Nix for private repos
+        run: |
+          mkdir -p ~/.config/nix
+          echo "access-tokens = github.com=${{ steps.app-token.outputs.token }}" >> ~/.config/nix/nix.conf
+
+      - name: Clone codetracer sibling
+        uses: metacraft-labs/metacraft-github-actions/clone-repo@main
+        with:
+          repo: metacraft-labs/codetracer
+          ref: ${{ github.event.inputs.codetracer_ref }}
+          path: ${{ github.workspace }}/../codetracer
+          gh-token: ${{ steps.app-token.outputs.token }}
+          submodules: "true"
+
+      - name: Clone codetracer-native-recorder sibling
+        uses: metacraft-labs/metacraft-github-actions/clone-repo@main
+        with:
+          repo: metacraft-labs/codetracer-native-recorder
+          ref: ${{ github.event.inputs.native_recorder_ref }}
+          path: ${{ github.workspace }}/../codetracer-native-recorder
+          gh-token: ${{ steps.app-token.outputs.token }}
+          submodules: "false"
+
+      - name: Allow direnv in siblings
+        run: |
+          nix develop "$(pwd)/../codetracer" --command direnv allow "$(pwd)/../codetracer"
+          nix develop "$(pwd)/../codetracer" --command direnv allow "$(pwd)/../codetracer-native-recorder"
+
+      - name: Regenerate ios-arm64 MCR fixture
+        # Mirrors the documented invocation:
+        #   direnv exec ../codetracer bash mcr/ios-arm64/regenerate.sh
+        run: |
+          nix develop "$(pwd)/../codetracer" --command \
+            direnv exec "$(pwd)/../codetracer" bash mcr/ios-arm64/regenerate.sh
+
+      - name: Upload refreshed fixtures artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcr-ios-arm64
+          path: |
+            mcr/ios-arm64/trace.ct
+            mcr/ios-arm64/trace-portable.ct
+            mcr/ios-arm64/binaries/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Open pull request with refreshed fixtures
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          add-paths: mcr/ios-arm64
+          branch: regen/mcr-ios-arm64
+          delete-branch: true
+          title: "Regenerate MCR ios-arm64 fixtures"
+          commit-message: "chore(mcr): regenerate ios-arm64 recording fixtures"
+          body: |
+            Automated regeneration of the ios-arm64 MCR recording fixtures
+            (`trace.ct` + `trace-portable.ct`) produced by
+            `mcr/ios-arm64/regenerate.sh` on a self-hosted macOS runner with
+            Xcode + iOS simulator.
+
+            Recorded against:
+            - codetracer @ `${{ github.event.inputs.codetracer_ref }}`
+            - codetracer-native-recorder @ `${{ github.event.inputs.native_recorder_ref }}`

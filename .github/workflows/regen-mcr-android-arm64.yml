@@ -1,0 +1,161 @@
+# Regenerate the Android ARM64 MCR recording fixtures.
+#
+# ============================ DEVICE REQUIREMENT ============================
+# This is the hardest platform to automate.  `mcr/android-arm64/regenerate.sh`
+# needs an ACTUAL adb-reachable ARM64 Android target to push and run the
+# cross-compiled CTSP client on:
+#
+#   * A physical Android phone connected to a self-hosted runner via USB
+#     (the reference fixture was recorded on a Samsung Galaxy S24 Ultra), OR
+#   * An ARM64 Android *emulator* running on an arm64 host.  Hosted GitHub
+#     runners cannot boot an arm64 emulator with KVM/HAXM acceleration, and
+#     `reactivecircus/android-emulator-runner` on the Linux hosted images
+#     only provides x86/x86_64 system images — which produce an x86 trace,
+#     NOT the arm64 device fixture this directory ships.
+#
+# Therefore this workflow targets a SELF-HOSTED runner that has:
+#   - adb on PATH with a connected/authorised arm64 device (or arm64 AVD),
+#   - the Android NDK ($ANDROID_NDK_HOME) for aarch64 cross-compilation,
+#   - the codetracer Nix dev shell (nim / ct-mcr / direnv).
+#
+# Do NOT expect a stock hosted runner to have a phone attached — the job
+# fails fast (see "Verify adb device" below) if no device is present.
+# ===========================================================================
+#
+# Manual (`workflow_dispatch`) only — an unattended cron makes no sense for
+# a physically device-bound job.
+
+name: "Regenerate MCR (android-arm64)"
+
+on:
+  workflow_dispatch:
+    inputs:
+      codetracer_ref:
+        description: "codetracer git ref (dev shell provider)"
+        required: false
+        default: "dev"
+      native_recorder_ref:
+        description: "codetracer-native-recorder git ref (ct-mcr + receiver source)"
+        required: false
+        default: "main"
+
+concurrency:
+  group: regen-mcr-android-arm64-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  regen-mcr-android-arm64:
+    # Self-hosted Linux/macOS runner with a connected arm64 Android device
+    # (or arm64 emulator), adb, and the Android NDK.  The `android` label
+    # must be applied to that runner in the self-hosted pool.
+    runs-on: [self-hosted, android]
+    name: regenerate (MCR, android-arm64)
+    steps:
+      - name: Generate CI token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.CI_TOKEN_PROVIDER_APP_ID }}
+          private-key: ${{ secrets.CI_TOKEN_PROVIDER_PRIVATE_KEY }}
+          owner: metacraft-labs
+
+      - name: Checkout example recordings
+        uses: actions/checkout@v5
+        with:
+          lfs: true
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Verify adb device + NDK
+        # Fail fast with a clear message if the runner is not actually
+        # wired to a device — a hosted runner has no phone attached.
+        run: |
+          if ! command -v adb >/dev/null 2>&1; then
+            echo "::error::adb not found — this runner must have the Android platform-tools installed."
+            exit 1
+          fi
+          if ! adb devices | grep -v '^List' | grep -qw 'device'; then
+            echo "::error::no authorised Android device visible to adb — connect an arm64 phone or boot an arm64 emulator on this self-hosted runner."
+            adb devices
+            exit 1
+          fi
+          if [ -z "${ANDROID_NDK_HOME:-}" ]; then
+            echo "::warning::ANDROID_NDK_HOME not set; regenerate.sh will try to auto-detect the NDK."
+          fi
+          adb devices
+
+      - name: Set up Nix
+        uses: metacraft-labs/nixos-modules/.github/setup-nix@main
+        with:
+          trusted-public-keys: ${{ vars.ATTIC_TRUSTED_PUBLIC_KEY }}
+          substituters: ${{ vars.ATTIC_SUBSTITUTER }}
+
+      - name: Configure Nix for private repos
+        run: |
+          mkdir -p ~/.config/nix
+          echo "access-tokens = github.com=${{ steps.app-token.outputs.token }}" >> ~/.config/nix/nix.conf
+
+      - name: Clone codetracer sibling
+        uses: metacraft-labs/metacraft-github-actions/clone-repo@main
+        with:
+          repo: metacraft-labs/codetracer
+          ref: ${{ github.event.inputs.codetracer_ref }}
+          path: ${{ github.workspace }}/../codetracer
+          gh-token: ${{ steps.app-token.outputs.token }}
+          submodules: "true"
+
+      - name: Clone codetracer-native-recorder sibling
+        uses: metacraft-labs/metacraft-github-actions/clone-repo@main
+        with:
+          repo: metacraft-labs/codetracer-native-recorder
+          ref: ${{ github.event.inputs.native_recorder_ref }}
+          path: ${{ github.workspace }}/../codetracer-native-recorder
+          gh-token: ${{ steps.app-token.outputs.token }}
+          submodules: "false"
+
+      - name: Allow direnv in siblings
+        run: |
+          nix develop "$(pwd)/../codetracer" --command direnv allow "$(pwd)/../codetracer"
+          nix develop "$(pwd)/../codetracer" --command direnv allow "$(pwd)/../codetracer-native-recorder"
+
+      - name: Regenerate android-arm64 MCR fixture
+        # Mirrors the documented invocation:
+        #   direnv exec ../codetracer bash mcr/android-arm64/regenerate.sh
+        # ANDROID_NDK_HOME is passed through if the runner exports it.
+        run: |
+          nix develop "$(pwd)/../codetracer" --command \
+            direnv exec "$(pwd)/../codetracer" bash mcr/android-arm64/regenerate.sh
+
+      - name: Upload refreshed fixtures artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcr-android-arm64
+          path: |
+            mcr/android-arm64/trace.ct
+            mcr/android-arm64/trace-portable.ct
+            mcr/android-arm64/binaries/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Open pull request with refreshed fixtures
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          add-paths: mcr/android-arm64
+          branch: regen/mcr-android-arm64
+          delete-branch: true
+          title: "Regenerate MCR android-arm64 fixtures"
+          commit-message: "chore(mcr): regenerate android-arm64 recording fixtures"
+          body: |
+            Automated regeneration of the android-arm64 MCR recording
+            fixtures (`trace.ct` + `trace-portable.ct`) produced by
+            `mcr/android-arm64/regenerate.sh` on a self-hosted runner with a
+            connected arm64 Android device + NDK.
+
+            Recorded against:
+            - codetracer @ `${{ github.event.inputs.codetracer_ref }}`
+            - codetracer-native-recorder @ `${{ github.event.inputs.native_recorder_ref }}`
