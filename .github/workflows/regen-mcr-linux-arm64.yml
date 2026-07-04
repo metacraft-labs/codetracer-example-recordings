@@ -1,0 +1,140 @@
+# Regenerate the Linux ARM64 MCR recording fixtures.
+#
+# Device-bound fixture: the trace must be recorded on a real Linux ARM64
+# (aarch64) host (ct-mcr interpose backend), so it cannot be produced on a
+# developer macOS box or an x86_64 runner.  This runs
+# `mcr/linux-arm64/regenerate.sh` on the self-hosted aarch64 NixOS runner
+# pool and proposes the refreshed `trace.ct` / `trace-portable.ct` back via
+# a pull request (also uploaded as an artifact as a fallback).
+#
+# Manual (`workflow_dispatch`) is the safe default; a monthly refresh cron
+# is provided but commented out.
+
+name: "Regenerate MCR (linux-arm64)"
+
+on:
+  workflow_dispatch:
+    inputs:
+      codetracer_ref:
+        description: "codetracer git ref (dev shell provider)"
+        required: false
+        default: "dev"
+      native_recorder_ref:
+        description: "codetracer-native-recorder git ref (ct-mcr source)"
+        required: false
+        default: "main"
+  # Monthly refresh — uncomment to enable.
+  # schedule:
+  #   - cron: "0 4 1 * *" # 04:00 UTC on the 1st of each month
+
+concurrency:
+  group: regen-mcr-linux-arm64-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  regen-mcr-linux-arm64:
+    # ASSUMPTION: the self-hosted aarch64 Linux/NixOS pool is labelled
+    # `aarch64-linux`, mirroring the x86_64 job's `[self-hosted, nixos]`
+    # plus a Nix-system arch qualifier (the macOS pool uses the analogous
+    # `aarch64-darwin`).  If the arm64 pool uses a different label (the
+    # workflows README previously suggested `[self-hosted, linux-arm64]`),
+    # adjust this list to match the runner registration.
+    runs-on: [self-hosted, nixos, aarch64-linux]
+    name: regenerate (MCR, linux-arm64)
+    steps:
+      - name: Generate CI token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.CI_TOKEN_PROVIDER_APP_ID }}
+          private-key: ${{ secrets.CI_TOKEN_PROVIDER_PRIVATE_KEY }}
+          owner: metacraft-labs
+
+      - name: Checkout example recordings
+        uses: actions/checkout@v5
+        with:
+          lfs: true
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Set up Nix
+        uses: metacraft-labs/nixos-modules/.github/setup-nix@main
+        with:
+          trusted-public-keys: ${{ vars.ATTIC_TRUSTED_PUBLIC_KEY }}
+          substituters: ${{ vars.ATTIC_SUBSTITUTER }}
+
+      - name: Configure Nix for private repos
+        run: |
+          mkdir -p ~/.config/nix
+          echo "access-tokens = github.com=${{ steps.app-token.outputs.token }}" >> ~/.config/nix/nix.conf
+
+      # The regen script computes its siblings relative to the repo root:
+      #   ../codetracer                 -> nix dev shell (cc, ct-mcr, nim, direnv)
+      #   ../codetracer-native-recorder -> ct-mcr source (just build-ct-mcr)
+      # Clone both adjacent to this checkout so `$REPO_ROOT/../<repo>` resolves.
+      - name: Clone codetracer sibling
+        uses: metacraft-labs/metacraft-github-actions/clone-repo@main
+        with:
+          repo: metacraft-labs/codetracer
+          ref: ${{ github.event.inputs.codetracer_ref }}
+          path: ${{ github.workspace }}/../codetracer
+          gh-token: ${{ steps.app-token.outputs.token }}
+          submodules: "true"
+
+      - name: Clone codetracer-native-recorder sibling
+        # No .gitmodules in the recorder, so submodules: 'false'.
+        uses: metacraft-labs/metacraft-github-actions/clone-repo@main
+        with:
+          repo: metacraft-labs/codetracer-native-recorder
+          ref: ${{ github.event.inputs.native_recorder_ref }}
+          path: ${{ github.workspace }}/../codetracer-native-recorder
+          gh-token: ${{ steps.app-token.outputs.token }}
+          submodules: "false"
+
+      - name: Allow direnv in siblings
+        # Fresh clones start with a "blocked" .envrc; whitelist both so the
+        # regen script's `direnv exec` invocations are permitted.
+        run: |
+          nix develop "$(pwd)/../codetracer" --command direnv allow "$(pwd)/../codetracer"
+          nix develop "$(pwd)/../codetracer" --command direnv allow "$(pwd)/../codetracer-native-recorder"
+
+      - name: Regenerate linux-arm64 MCR fixture
+        # Mirrors the documented invocation:
+        #   direnv exec ../codetracer bash mcr/linux-arm64/regenerate.sh
+        run: |
+          nix develop "$(pwd)/../codetracer" --command \
+            direnv exec "$(pwd)/../codetracer" bash mcr/linux-arm64/regenerate.sh
+
+      - name: Upload refreshed fixtures artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcr-linux-arm64
+          path: |
+            mcr/linux-arm64/trace.ct
+            mcr/linux-arm64/trace-portable.ct
+            mcr/linux-arm64/binaries/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Open pull request with refreshed fixtures
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          add-paths: mcr/linux-arm64
+          branch: regen/mcr-linux-arm64
+          delete-branch: true
+          title: "Regenerate MCR linux-arm64 fixtures"
+          commit-message: "chore(mcr): regenerate linux-arm64 recording fixtures"
+          body: |
+            Automated regeneration of the linux-arm64 MCR recording fixtures
+            (`trace.ct` + `trace-portable.ct`) produced by
+            `mcr/linux-arm64/regenerate.sh` on the self-hosted aarch64 NixOS
+            runner.
+
+            Recorded against:
+            - codetracer @ `${{ github.event.inputs.codetracer_ref }}`
+            - codetracer-native-recorder @ `${{ github.event.inputs.native_recorder_ref }}`

@@ -1,0 +1,158 @@
+# Regenerate the RR-based language recording fixtures (rust / c / go / nim).
+#
+# These fixtures are recorded by `ct-rr-support` (Mozilla rr backend) and
+# are therefore LINUX-ONLY.  rr replays deterministically by counting
+# retired hardware instructions, which requires access to the CPU
+# performance-monitoring unit (PMU):
+#
+#   * `kernel.perf_event_paranoid` must be <= 1
+#     (`sudo sysctl kernel.perf_event_paranoid=1`), and
+#   * the runner must expose the PMU counters rr needs.  Most hosted
+#     GitHub runners and nested-virtualisation VMs do NOT — this job
+#     therefore targets the self-hosted bare-metal NixOS pool.
+#
+# Each matrix leg runs `<lang>/flow_test/regenerate.sh`, which builds the
+# test program from the codetracer sibling checkout and records it with
+# `ct-rr-support`, then uploads the refreshed trace folder as an artifact
+# and opens a per-language pull request (artifact is the reliable fallback
+# for the LFS-tracked rr/ blobs).
+#
+# Manual (`workflow_dispatch`) is the safe default; a monthly refresh cron
+# is provided but commented out.
+
+name: "Regenerate RR language recordings"
+
+on:
+  workflow_dispatch:
+    inputs:
+      codetracer_ref:
+        description: "codetracer git ref (dev shell + test-program source)"
+        required: false
+        default: "dev"
+      native_recorder_ref:
+        description: "codetracer-native-recorder git ref"
+        required: false
+        default: "main"
+  # Monthly refresh — uncomment to enable.
+  # schedule:
+  #   - cron: "0 5 1 * *" # 05:00 UTC on the 1st of each month
+
+concurrency:
+  group: regen-rr-language-recordings-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  regen-rr:
+    # Self-hosted bare-metal NixOS runner: rr needs real PMU counters and
+    # perf_event_paranoid <= 1, which hosted runners do not provide.
+    runs-on: [self-hosted, nixos, x86-64-v2, bare-metal]
+    name: regenerate (RR, ${{ matrix.lang }})
+    strategy:
+      fail-fast: false
+      matrix:
+        lang: [rust, c, go, nim]
+    steps:
+      - name: Generate CI token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.CI_TOKEN_PROVIDER_APP_ID }}
+          private-key: ${{ secrets.CI_TOKEN_PROVIDER_PRIVATE_KEY }}
+          owner: metacraft-labs
+
+      - name: Checkout example recordings
+        uses: actions/checkout@v5
+        with:
+          lfs: true
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Verify rr prerequisites
+        # Fail fast with a clear message if the runner cannot host rr —
+        # perf_event_paranoid must be <= 1 for rr to read the PMU.
+        run: |
+          paranoid="$(cat /proc/sys/kernel/perf_event_paranoid 2>/dev/null || echo unknown)"
+          echo "kernel.perf_event_paranoid = $paranoid"
+          if [ "$paranoid" = "unknown" ]; then
+            echo "::warning::could not read kernel.perf_event_paranoid — rr may still work if the PMU is exposed."
+          elif [ "$paranoid" -gt 1 ]; then
+            echo "::error::kernel.perf_event_paranoid=$paranoid > 1 — rr cannot access the PMU. Run: sudo sysctl kernel.perf_event_paranoid=1"
+            exit 1
+          fi
+
+      - name: Set up Nix
+        uses: metacraft-labs/nixos-modules/.github/setup-nix@main
+        with:
+          trusted-public-keys: ${{ vars.ATTIC_TRUSTED_PUBLIC_KEY }}
+          substituters: ${{ vars.ATTIC_SUBSTITUTER }}
+
+      - name: Configure Nix for private repos
+        run: |
+          mkdir -p ~/.config/nix
+          echo "access-tokens = github.com=${{ steps.app-token.outputs.token }}" >> ~/.config/nix/nix.conf
+
+      # The regen scripts compute their siblings relative to the repo root:
+      #   ../codetracer                 -> nix dev shell (ct-rr-support, direnv)
+      #                                    and the RR test-program source.
+      #   ../codetracer-native-recorder -> kept adjacent for parity with the
+      #                                    MCR jobs / the codetracer dev shell.
+      - name: Clone codetracer sibling
+        uses: metacraft-labs/metacraft-github-actions/clone-repo@main
+        with:
+          repo: metacraft-labs/codetracer
+          ref: ${{ github.event.inputs.codetracer_ref }}
+          path: ${{ github.workspace }}/../codetracer
+          gh-token: ${{ steps.app-token.outputs.token }}
+          submodules: "true"
+
+      - name: Clone codetracer-native-recorder sibling
+        uses: metacraft-labs/metacraft-github-actions/clone-repo@main
+        with:
+          repo: metacraft-labs/codetracer-native-recorder
+          ref: ${{ github.event.inputs.native_recorder_ref }}
+          path: ${{ github.workspace }}/../codetracer-native-recorder
+          gh-token: ${{ steps.app-token.outputs.token }}
+          submodules: "false"
+
+      - name: Allow direnv in siblings
+        run: |
+          nix develop "$(pwd)/../codetracer" --command direnv allow "$(pwd)/../codetracer"
+          nix develop "$(pwd)/../codetracer" --command direnv allow "$(pwd)/../codetracer-native-recorder"
+
+      - name: Regenerate ${{ matrix.lang }} RR fixture
+        # Mirrors the documented invocation:
+        #   direnv exec ../codetracer bash <lang>/flow_test/regenerate.sh
+        run: |
+          nix develop "$(pwd)/../codetracer" --command \
+            direnv exec "$(pwd)/../codetracer" bash ${{ matrix.lang }}/flow_test/regenerate.sh
+
+      - name: Upload refreshed fixture artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rr-${{ matrix.lang }}-flow_test
+          path: ${{ matrix.lang }}/flow_test/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Open pull request with refreshed fixture
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          add-paths: ${{ matrix.lang }}/flow_test
+          branch: regen/rr-${{ matrix.lang }}-flow_test
+          delete-branch: true
+          title: "Regenerate RR ${{ matrix.lang }} flow_test fixture"
+          commit-message: "chore(rr): regenerate ${{ matrix.lang }} flow_test recording fixture"
+          body: |
+            Automated regeneration of the `${{ matrix.lang }}/flow_test/` RR
+            recording fixture produced by
+            `${{ matrix.lang }}/flow_test/regenerate.sh` on the self-hosted
+            bare-metal NixOS runner (rr requires PMU access).
+
+            Recorded against:
+            - codetracer @ `${{ github.event.inputs.codetracer_ref }}`
+            - codetracer-native-recorder @ `${{ github.event.inputs.native_recorder_ref }}`

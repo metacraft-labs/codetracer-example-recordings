@@ -65,7 +65,7 @@ that produces both `trace.ct` and `trace-portable.ct`. Status:
 | windows-x86_64 | done (.ps1) | done | done | — |
 | android-arm64 | done | done | done | — |
 | ios-arm64 | done | done | done | — |
-| linux-arm64 | TODO | TODO | TODO | Run on ARM64 Linux host |
+| linux-arm64 | done | TODO | TODO | Script + CI workflow ready; traces pending first run on an ARM64 Linux host |
 
 To regenerate a platform (example for Linux x86_64):
 ```bash
