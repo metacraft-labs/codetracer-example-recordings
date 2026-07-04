@@ -29,6 +29,14 @@ PORTABLE="$SCRIPT_DIR/trace-portable.ct"
 
 FIXTURE_GEN="$NATIVE_RECORDER/ct_cooperative/tests/generate_recording_fixture.nim"
 
+# Canonical, pinned recording ids. Consumers hardcode these:
+#   codetracer/src/common/fixture_ids.nim
+#   codetracer/src/db-backend/tests/common/fixture_ids.rs
+#   codetracer-example-recordings/FIXTURE_IDS.md
+# Keep them in sync there if they ever change.
+RECORDING_ID="019e3a35-2542-7a00-8aaa-43ff20030001"
+PORTABLE_RECORDING_ID="019e3a35-2542-7a00-8aaa-43ff20030002"
+
 echo "=== Regenerating macOS ARM64 MCR fixture ==="
 echo "  Source: $SOURCE"
 echo "  Binary: $BINARY"
@@ -44,11 +52,14 @@ echo "  $(file "$BINARY")"
 echo ""
 
 # Step 2: Record (cooperative mode via fixture generator)
+# Build the generator, then invoke the binary directly.  Passing the args
+# through `nim c -r ... --` leaks the `--` separator into the program's
+# argv on current Nim, which the generator's parser rejects.
 echo ">>> Recording with cooperative-mode fixture generator..."
 rm -f "$TRACE"
-(cd "$NATIVE_RECORDER" && nim c -r "$FIXTURE_GEN" -- \
-  --output="$TRACE" \
-  --program="$BINARY")
+GEN_BIN="${FIXTURE_GEN%.nim}"
+(cd "$NATIVE_RECORDER" && nim c "$FIXTURE_GEN")
+"$GEN_BIN" --output="$TRACE" --program="$BINARY" --recording-id="$RECORDING_ID"
 echo ""
 
 # Step 3: Find ct-mcr
@@ -72,7 +83,8 @@ echo ""
 # so run the export from the binaries dir where the binary can be found.
 echo ">>> Exporting portable trace..."
 rm -f "$PORTABLE"
-(cd "$SCRIPT_DIR/binaries" && "$CT_MCR" export --portable -v -o "$PORTABLE" "$TRACE")
+(cd "$SCRIPT_DIR/binaries" && "$CT_MCR" export --portable -v \
+	--recording-id "$PORTABLE_RECORDING_ID" -o "$PORTABLE" "$TRACE")
 echo ""
 
 # Step 5: Verify
