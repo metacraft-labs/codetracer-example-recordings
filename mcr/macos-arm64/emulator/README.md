@@ -16,10 +16,17 @@ them record the same `one_write` victim.
 | Directory | Victim | Recorded via | What it pins |
 |---|---|---|---|
 | `eme5/` | `null_main`, `one_puts` | `ct_cli record` (interpose) | Trace ingest, decode cascade, shared-cache + stack provisioning, the pass-1 boundary |
-| `eme5_inject/` | `one_write` | `ct_cli record --experimental-no-sip-mode` | The cp0-seeded T0 (`__dyld_start`) inject seed; the emulator/native lockstep pair |
+| `eme5_inject/` | `one_write` | `ct_cli record --experimental-no-sip-mode` | The cp0-seeded T0 (`__dyld_start`) inject seed; **the no-founding-stream fallback path** — the only fixture that reaches an `svc` with `predyldRecordCount == 0` |
 | `eme5_predyld/` | `one_write` | inject + `CT_STAGE0_INCHILD_SETUP=1` | The in-child pre-dyld installer, the double-dyld (`restartWithDyldInCache`) founding stream, T0 disk re-derivation |
-| `eme_ete_2006/` | `one_write` | inject + M9c + `CT_PREDYLD_ETE=1` | Archival: the M9c + arc4 + Apple-ETE founding recording (see its `.info.txt` for the negative ETE-decode result) |
+| `eme5_inject_founding/` | `one_write` | inject + `CT_STAGE0_INCHILD_SETUP=1`, lean interpose dylib | Founding svcs SERVED from the recording at scale: 1945 events consumed, 1898 founding serves, 74 out-param copyouts — the fixture on which per-syscall merkle emission is non-vacuous |
 | `eme_m9c_2006/` | `one_write` | inject + M9c + `CT_ARC4_HOOK=1` | Whole-program svc capture via the reach-independent detour tier; the cache-dyld re-arm; the current replay frontier |
+
+`eme_ete_2006/` (inject + M9c + `CT_PREDYLD_ETE=1`) was **retired** on
+2026-07-28. It had no code consumer, no committed driver, and was not
+reproducible from the repo — its scratch driver `zz_rec_m9c_ow.nim` exists in no
+tree. Keeping a fixture nothing reads and nothing can regenerate only costs
+review attention. The full recording, including the 148 MB `.trace.ete` that was
+never bundled here, lives under `~/mcr-hwtrace/eme_ete_2006/`.
 
 ## Files in each directory
 

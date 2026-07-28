@@ -64,6 +64,10 @@ regen_one() {
 	eme5_inject)
 		run_driver eme5_inject ct_cli/tests/record_macos_eme5_inject.nim
 		;;
+	eme5_inject_founding)
+		run_driver eme5_inject_founding \
+			ct_cli/tests/record_macos_eme5_inject_founding.nim
+		;;
 	eme_m9c_2006)
 		run_driver eme_m9c_2006 ct_cli/tests/record_macos_eme_m9c_2006.nim
 		;;
@@ -88,16 +92,18 @@ regen_one() {
 		exit 1
 		;;
 	eme_ete_2006)
-		echo "ERROR: 'eme_ete_2006' is NOT reproducible from the repo." >&2
-		echo "       It was recorded by ct_cli/src/zz_rec_m9c_ow.nim, a scratch" >&2
-		echo "       driver that no longer exists. The full recording (including" >&2
-		echo "       the 148 MB .trace.ete) lives at ~/mcr-hwtrace/eme_ete_2006/." >&2
-		echo "       Treat this fixture as ARCHIVAL." >&2
+		echo "ERROR: 'eme_ete_2006' was RETIRED on 2026-07-28 and is no longer" >&2
+		echo "       in this repository. It had no code consumer, no committed" >&2
+		echo "       driver, and was not reproducible: its scratch driver" >&2
+		echo "       ct_cli/src/zz_rec_m9c_ow.nim exists in no tree." >&2
+		echo "       The full recording (including the 148 MB .trace.ete that was" >&2
+		echo "       never bundled here) lives at ~/mcr-hwtrace/eme_ete_2006/." >&2
 		exit 1
 		;;
 	*)
 		echo "ERROR: unknown fixture '$1'." >&2
-		echo "       Known: eme5 eme5_inject eme5_predyld eme_ete_2006 eme_m9c_2006" >&2
+		echo "       Known: eme5 eme5_inject eme5_inject_founding eme5_predyld" >&2
+		echo "              eme_m9c_2006  (retired: eme_ete_2006)" >&2
 		exit 1
 		;;
 	esac
@@ -108,9 +114,10 @@ if [ "$#" -gt 0 ]; then
 else
 	# Every fixture that HAS a committed driver.
 	regen_one eme5_inject
+	regen_one eme5_inject_founding
 	regen_one eme_m9c_2006
-	echo "NOTE: eme5, eme5_predyld and eme_ete_2006 were skipped — they have no"
-	echo "      committed driver. Name one explicitly to see what it would take."
+	echo "NOTE: eme5 and eme5_predyld were skipped — they have no committed"
+	echo "      driver. Name one explicitly to see what it would take."
 fi
 
 echo "=== Done ==="

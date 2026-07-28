@@ -1,0 +1,5 @@
+evOsPredyldSyscall 2044
+evSyncLockAcquireSuccess 3
+evSyncLockRelease 3
+evOsWrite 1
+evThreadStart 1
