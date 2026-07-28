@@ -12,14 +12,20 @@
 # WHY THIS FIXTURE EXISTS (and why it is NOT an overwrite of eme5_inject).
 # eme5_inject carries predyldRecordCount == 0 and is the ONLY fixture that
 # exercises the emulator's no-founding-stream FALLBACK path
-# (ctfs_bridge.nim, `if not havePredyldStream:`).  That path is still live: the
-# recorder's founding capture is opt-in (CT_STAGE0_INCHILD_SETUP, default off —
-# predyld_svc_capture.nim inChildSetupRequested), so every DEFAULT-configuration
-# macOS recording still lands on it.  Verified empirically on 2026-07-28: a
-# recording made that day with the plain recipe carried 0 founding records and
-# replayed through the fallback for all 9 svcs to the same fsgetpath boundary.
-# So eme5_inject keeps its job, and the founding-armed recording is THIS
-# configuration directory — the established slot for "inject +
+# (ctfs_bridge.nim, `if not havePredyldStream:`).
+#
+# UPDATED 2026-07-29: founding capture is now the RECORD DEFAULT
+# (predyld_svc_capture.nim resolveFoundingCapturePath), so a plain
+# `ct-mcr record` produces a recording shaped like THIS one, and eme5_inject
+# now reaches its founding-free shape via an explicit
+# CT_STAGE0_INCHILD_SETUP=0.  The fallback therefore serves no NEW recording —
+# but it remains the only way to replay the recordings made before the
+# promotion, eme5_inject among them, so eme5_inject keeps its job.  Retiring
+# the fallback is a trace-compatibility decision (do pre-promotion `.ct` files
+# stop replaying?), not a mechanical deletion: `havePredyldStream` is a
+# property of the RECORDING, never of the replay mode.
+#
+# The founding-armed recording is THIS configuration directory — the established slot for "inject +
 # CT_STAGE0_INCHILD_SETUP=1", which until 2026-07-29 had no committed driver.
 #
 # RE-RECORDED 2026-07-29.  The recording that stood here predated

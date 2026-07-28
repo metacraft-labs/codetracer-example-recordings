@@ -5,9 +5,11 @@
 #
 # Recorded via: ct_cli/tests/record_macos_eme5_inject.nim
 #   = the injected record path (runInject imRecord, the SIP-off PC-hijack of a
-#     suspended child at pre-dyld T0 = __dyld_start) with CT_STAGE0_INCHILD_SETUP
-#     explicitly CLEARED — the plain recipe, i.e. the recorder's DEFAULT
-#     configuration.
+#     suspended child at pre-dyld T0 = __dyld_start) with
+#     CT_STAGE0_INCHILD_SETUP=0 — an EXPLICIT opt-out from founding capture.
+#     (When this fixture was first recorded, clearing the variable was enough:
+#     founding capture was opt-in and this was the recorder's DEFAULT
+#     configuration.  It no longer is — see below.)
 #
 # ============================================================================
 # WHY THIS FIXTURE IS FOUNDING-FREE ON PURPOSE
@@ -20,29 +22,37 @@
 # the OS-sim host-shortcuts dyld's whole bring-up surface instead of serving it
 # from the recording.
 #
-# THE FALLBACK IS NOT DEAD CODE — MEASURED, NOT ASSUMED (2026-07-29):
-#   * The recorder's founding capture is OPT-IN.
-#     predyld_svc_capture.inChildSetupRequested() is
-#     `getEnv("CT_STAGE0_INCHILD_SETUP") == "1"`, documented "default ->
-#     byte-identical normal path".  Every DEFAULT-configuration macOS recording
-#     therefore has no founding stream and lands on this path.
-#   * THIS recording is such a recording, made with the current recorder: 0
-#     founding evOsPredyldSyscall records, and its replay takes the fallback for
-#     every svc it issues.
+# THE FALLBACK IS NOT DEAD CODE — MEASURED, NOT ASSUMED:
+#   * THIS recording carries 0 founding evOsPredyldSyscall records, and its
+#     replay takes the fallback for every svc it issues.
 #   * eme5/null_main and eme5/one_puts are also founding-free but cover the
 #     fallback NOT AT ALL: they fault at PC=0 after 20 instructions, before any
 #     svc is issued.  Nothing else covers it.
-#   * Deleting the fallback would make every default-configuration macOS
-#     recording stop at its FIRST svc instead of running dyld's bring-up.
 #
-# The founding-ARMED counterpart is eme5_inject_founding/.
+# UPDATED 2026-07-29 — FOUNDING CAPTURE IS NOW THE RECORD DEFAULT.
+# `predyld_svc_capture.resolveFoundingCapturePath` defaults a RECORD run to the
+# Stage-2c in-child setup installer, so a plain `ct-mcr record` now produces a
+# founding-ARMED recording.  Two consequences:
 #
-# OPEN, FOR THE OWNER.  The fallback's OS-sim answers are FABRICATED
-# (task_self_trap -> 0x103, csrctl -> 0x6f), which the replay contract deprecates
-# in favour of serving recorded results.  The right way to retire it is to make
-# founding capture the recorder DEFAULT; at that point it becomes genuinely
-# unreachable and it — and this fixture — can be removed together.  Deleting it
-# before then removes a capability, not a fake.
+#   * this fixture reaches its founding-free configuration by ASKING for it
+#     (CT_STAGE0_INCHILD_SETUP=0), not by leaving a variable unset;
+#   * the fallback no longer serves any NEW recording — but it is still the only
+#     way to replay a recording made BEFORE the promotion, including this one.
+#
+# The founding-ARMED counterpart is eme5_predyld/ (it absorbed the short-lived
+# eme5_inject_founding/ directory, which no longer exists).
+#
+# OPEN, FOR THE OWNER — RETIREMENT IS A TRACE-COMPATIBILITY DECISION, NOT A
+# MECHANICAL DELETION.  The fallback selector `havePredyldStream` is purely a
+# property of the RECORDING (>=1 evOsPredyldSyscall event), never of the replay
+# mode, so promotion alone cannot make it unreachable for `.ct` files that
+# already exist.  Deleting it means pre-promotion recordings — this fixture
+# among them — stop replaying.  Its remaining fabrications are task_self_trap
+# -> 0x103 plus the allocPortName family (thread_self_trap, host_self_trap,
+# mach_reply_port), thread_selfid -> 0x30D40, crossarch_trap -> ENOSYS and
+# issetugid -> 0.  csrctl is NO LONGER among them: the handler now declines
+# when the recording does not carry the record host's SIP configuration
+# (see the terminus below), which is why this fixture stops where it does.
 
 # ============================================================================
 # RE-RECORDED 2026-07-29 — THE PREVIOUS RECORDING NO LONGER REPLAYED

@@ -16,8 +16,8 @@ them record the same `one_write` victim.
 | Directory | Victim | Recorded via | What it pins |
 |---|---|---|---|
 | `eme5/` | `null_main`, `one_puts` | `ct_cli record` (interpose) | Trace ingest, decode cascade, shared-cache + stack provisioning, the pass-1 boundary |
-| `eme5_inject/` | `one_write` | `ct_cli record --experimental-no-sip-mode` | The cp0-seeded T0 (`__dyld_start`) inject seed; **the no-founding-stream fallback path** — the only fixture that reaches an `svc` with `predyldRecordCount == 0` |
-| `eme5_predyld/` | `one_write` | inject + `CT_STAGE0_INCHILD_SETUP=1`, lean interpose dylib | The in-child pre-dyld installer, T0 disk re-derivation, and founding svcs SERVED from the recording at scale: 1945 events consumed, 1898 founding serves, 74 out-param copyouts |
+| `eme5_inject/` | `one_write` | `ct_cli record --experimental-no-sip-mode` + `CT_STAGE0_INCHILD_SETUP=0` | The cp0-seeded T0 (`__dyld_start`) inject seed; **the no-founding-stream fallback path** — the only fixture that reaches an `svc` with `predyldRecordCount == 0`. Since founding capture became the record default (2026-07-29) the founding-free shape is an explicit opt-out, and the fallback serves only pre-promotion recordings |
+| `eme5_predyld/` | `one_write` | inject + `CT_STAGE0_INCHILD_SETUP=1` (now also the default), lean interpose dylib | The in-child pre-dyld installer, T0 disk re-derivation, and founding svcs SERVED from the recording at scale: 1945 events consumed, 1898 founding serves, 74 out-param copyouts |
 | `eme_m9c_2006/` | `one_write` | inject + M9c + `CT_ARC4_HOOK=1` | Whole-program svc capture via the reach-independent detour tier; the cache-dyld re-arm; the current replay frontier |
 
 `eme_ete_2006/` (inject + M9c + `CT_PREDYLD_ETE=1`) was **retired** on
