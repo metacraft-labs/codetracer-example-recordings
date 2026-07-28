@@ -29,6 +29,27 @@ was produced by a real CodeTracer recorder over a real program.
 | Windows x86_64 | `mcr/windows-x86_64/` | Windows 11 x64 (ct-mcr interpose) | `.ct` (CTFS) |
 | Linux ARM64 | `mcr/linux-arm64/` | Linux ARM64 (ct-mcr interpose) | `.ct` (CTFS) |
 
+### MCR emulator fixtures
+
+`mcr/macos-arm64/emulator/` holds a second, distinct family: several macOS
+ARM64 recordings of tiny victim programs, one directory per recorder
+CONFIGURATION rather than per platform. They drive the arm64 **emulator
+replay** and **lockstep-diff** suites in `codetracer-native-recorder` — the
+suites that pin how far the emulator gets through a real macOS bring-up and
+where it honestly stops.
+
+| Directory | Victim | Recorded via |
+|-----------|--------|--------------|
+| `emulator/eme5/` | `null_main`, `one_puts` | `ct_cli record` (interpose) |
+| `emulator/eme5_inject/` | `one_write` | injected record (`--experimental-no-sip-mode`) |
+| `emulator/eme5_predyld/` | `one_write` | injected record + in-child pre-dyld installer |
+| `emulator/eme_ete_2006/` | `one_write` | injected record + M9c + Apple ETE (archival) |
+| `emulator/eme_m9c_2006/` | `one_write` | injected record + M9c whole-program svc capture |
+
+These are device-bound: an Apple Silicon Mac with SIP disabled, an entitled
+recorder, and a quiet host. See
+[`mcr/macos-arm64/emulator/README.md`](mcr/macos-arm64/emulator/README.md).
+
 MCR recordings are stored **without embedded binaries**. The recorded
 program's binary is stored separately in a `binaries/` subdirectory.
 This allows tests to exercise both scenarios:

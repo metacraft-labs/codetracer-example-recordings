@@ -58,6 +58,22 @@ recordings.
 | `mcr/windows-x86_64/trace.ct`                | `019e3a35-2545-7a00-8aaa-43ff20060001`   | Windows 11 x64 recording (interpose); pre-meta.dat blocker.                                                                                            |
 | `mcr/windows-x86_64/trace-portable.ct`       | `019e3a35-2545-7a00-8aaa-43ff20060002`   | Portable export of the Windows x86_64 raw trace.                                                                                                       |
 
+### MCR emulator fixtures (`mcr/macos-arm64/emulator/<config>/`)
+
+Several recordings of the SAME platform, one per recorder CONFIGURATION, used by
+the arm64 emulator-replay and lockstep-diff suites in `codetracer-native-recorder`.
+See [`mcr/macos-arm64/emulator/README.md`](mcr/macos-arm64/emulator/README.md);
+each fixture's own `<name>.info.txt` is its characterization note.
+
+| Fixture path                                          | `recording_id`                           | Notes                                                                                                                                    |
+| ----------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `mcr/macos-arm64/emulator/eme5/null_main.ct`          | `019e3a35-2546-7a00-8aaa-43ff20070001`   | `ct_cli record` (interpose) over `programs/mcr_null_main.c`; pre-meta.dat blocker.                                                       |
+| `mcr/macos-arm64/emulator/eme5/one_puts.ct`           | `019e3a35-2546-7a00-8aaa-43ff20070002`   | `ct_cli record` (interpose) over `programs/mcr_one_puts.c`; same blocker.                                                                |
+| `mcr/macos-arm64/emulator/eme5_inject/one_write.ct`   | `019e3a35-2547-7a00-8aaa-43ff20080001`   | Injected record (`--experimental-no-sip-mode`), cp0-seeded at pre-dyld T0. Driver: `ct_cli/tests/record_macos_eme5_inject.nim`.          |
+| `mcr/macos-arm64/emulator/eme5_predyld/one_write.ct`  | `019e3a35-2548-7a00-8aaa-43ff20090001`   | Injected record + `CT_STAGE0_INCHILD_SETUP=1` (Stage 2c/3b in-child installer). No committed driver yet.                                  |
+| `mcr/macos-arm64/emulator/eme_ete_2006/one_write.ct`  | `019e3a35-2549-7a00-8aaa-43ff200a0001`   | **ARCHIVAL — not reproducible.** M9c + arc4 + Apple-ETE founding recording; its scratch driver no longer exists.                          |
+| `mcr/macos-arm64/emulator/eme_m9c_2006/one_write.ct`  | `019e3a35-254a-7a00-8aaa-43ff200b0001`   | Injected record + M9c whole-program svc capture. Driver: `ct_cli/tests/record_macos_eme_m9c_2006.nim`.                                    |
+
 ## Test-side mirrors
 
 Two source-tree mirrors of this table are kept in lockstep — change one,
@@ -72,6 +88,15 @@ change all three:
 
 Both modules import the table by value (no runtime parse step); the
 canonical authority is this Markdown file.
+
+**Scope of the mirrors.** They exist for `codetracer`'s own tests, so they
+carry only the fixtures `codetracer` consumes. The
+`mcr/macos-arm64/emulator/` rows are deliberately **not** mirrored: those
+recordings are consumed exclusively by `codetracer-native-recorder`'s Nim
+suites, which resolve them by path (via
+`tests/support/example_recordings.nim`) and never by id. Adding them to the
+mirrors would be dead constants. If `codetracer` ever starts consuming one,
+mirror that row then.
 
 ## How regeneration interacts with the recorder sweep
 

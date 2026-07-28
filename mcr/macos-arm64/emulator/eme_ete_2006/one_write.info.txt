@@ -1,0 +1,77 @@
+# eme_ete_2006/one_write — M9c + arc4 + ETE founding recording (MCR one_write
+# replay-frontier fixture).
+#
+# Victim: write(1,"one\n",4); return 0;  (direct write syscall).
+#
+# Recorded via the M9c whole-program-svc-capture inject path with
+# CT_STAGE0_INCHILD_SETUP=1 + CT_M9_EVERYIMAGE=1 + CT_M9C=1 + CT_PREDYLD_ETE=1
+# (driver: ct_cli/src/zz_rec_m9c_ow.nim, scratch). The founding pre-dyld svc
+# stream is captured as evOsPredyldSyscall events; the child's pre-dyld /
+# cache-dyld control flow is captured as an Apple-ETE sidecar.
+#
+#   founding svcs captured : 18
+#   svc sites patched      : 169
+#   dyld base              : 0x0000000100010000  (disk-dyld / all-JIT window)
+#   installer status       : 0x2C2C2CDE (OK)
+#
+# BUNDLED HERE (replayable subset, ~10 MB):
+#   one_write.ct            main CTFS trace (215 events, replayable)
+#   one_write.ct.predyld    founding pre-dyld svc dump (18 svcs)
+#   one_write.ct.head.json  recording head
+#   one_write.ct.loadtrap   M7 image-load-trap sequence (base,size in load order)
+#   one_write.ct.m9images    M9 svc-issuing image list
+#   one_write.ct.wpband.1/2 M9c whole-program svc bands
+#   one_write.c             victim source
+#
+# NOT bundled (too large for a non-LFS repo, 148 MB):
+#   one_write.ct.trace.ete  raw Apple-ETE packet stream
+#   one_write.ct.trace.meta  hw-trace sidecar meta (synthetic minimal, addr-space image)
+# The full recording incl. the .trace.ete lives durably at:
+#   ~/mcr-hwtrace/eme_ete_2006/
+#
+# REPLAY FRONTIER (as of this recording, dev @ 49ecb877):
+#   replayMacosCtTrace(one_write.ct) faithfully reproduces the founding
+#   syscall sequence (task_self_trap, mach_reply_port, thread_selfid, ...,
+#   getpid, mach_vm_map, mach_vm_deallocate, proc_info = 18 svcs / cursor 18)
+#   over ~25.0M instructions, then STOPS at:
+#     stop      = mrsUnhandledTrap
+#     name      = thread_selfid (BSD 372)
+#     stopPC    = 0x0000000187EE9D24  (libsystem_kernel syscall gate)
+#     detail    = "... NO matching evOsPredyldSyscall event [cursor 18;
+#                  next recorded #20] — §4.2.4 missed hook OR the M-PDC-2b
+#                  boundary (mach_msg is not in the founding pre-dyld stream)"
+#   Replay issues ZERO getattrlist calls: the earlier getattrlist-vs-
+#   mach_vm_allocate divergence (record proc_info vs replay getattrlist, the
+#   old ~cursor-2006 stop) is OVERTAKEN — replay now takes the record's
+#   proc_info path. The current frontier is the founding-pre-dyld capture
+#   BOUNDARY: replay runs past the 18-svc founding window into real
+#   dyld/libSystem bring-up that issues a SECOND thread_selfid with no
+#   recorded return value to serve. This is a MISSING-CAPTURE frontier
+#   (post-founding syscalls not in the served stream), not a control-flow
+#   reconstruction bug.
+#
+# ETE DIFFERENTIAL ORACLE — NEGATIVE RESULT (this pass):
+#   The plan was to decode this recording's .trace.ete via
+#   ct_events/apple_ete.nim (appleRealControlFlowEvents) into an ordered
+#   address-anchor stream and align-diff it against the replay PC trace to pin
+#   the first divergent control-flow address. On this FULL 148 MB real stream
+#   the offline address decoder does NOT produce usable absolute VAs:
+#     byte coverage       = 0.9056   (packet framing largely understood)
+#     address anchors     = 121,400  (0.034% of 354M events; rest are atoms)
+#     4-byte-aligned      = 34%       (valid ARM64 instruction VAs need 100%)
+#     anchors in any real image window (0x100xxxxxxx disk-dyld / 0x182xxxxxxx
+#                          shared cache) = 0
+#     most common last hex digit of an "address" = '5' (impossible for a
+#                          4-aligned instruction address)
+#   Root cause (matches apple_ete.nim's own honest note): the sz=0x03
+#   embedded-counter address form has a STATE-DEPENDENT length ("no static
+#   rule is safe"), so address-stream threading DESYNCS within the first few
+#   anchors and every subsequent reconstructed VA is garbage. The commit
+#   49ecb877 "exact" validations (addrtrace 255/256, mpage 8/8) were on small
+#   CURATED known-address fixtures that avoid the residual; they do NOT hold on
+#   a full real capture. CONCLUSION: the in-house apple_ete.nim decoder cannot
+#   serve as the record-side control-flow oracle for align-diff here. The
+#   documented alternative (ct_events/docs/apple-ete-re/: grab_atrc.py +
+#   ete_oracle.sh driving libhwtrace / OpenCSD on Apple's own .atrc container)
+#   is the path that recovers correct GT PCs — that is what a future align-diff
+#   pass must feed mcr-ete-align-diff.py, NOT appleRealControlFlowEvents.

@@ -6,6 +6,17 @@ runner class to produce them: the **device-bound** MCR fixtures under
 `<lang>/flow_test/`. The `macos-arm64` MCR fixture is refreshed by a
 developer on an Apple Silicon Mac and has no workflow here.
 
+The `mcr/macos-arm64/emulator/` fixtures follow that same rule, and more
+strictly: they are recorded through the injected pre-dyld path, which needs
+**SIP disabled** and a recorder ad-hoc-signed with
+`com.apple.security.cs.debugger` + `com.apple.private.thread-set-state`, on a
+**quiet host** (concurrent recording tests SIGKILL each other). No CI runner
+class satisfies that, so there is deliberately no workflow — regenerate them
+with `mcr/macos-arm64/emulator/regenerate.sh` on a developer machine. Two of
+the five have committed drivers in the recorder repo; the script fails loudly
+and says what is missing for the rest, and `eme_ete_2006` is archival (its
+scratch driver no longer exists).
+
 All workflows are **`workflow_dispatch`** (manual). Each has an optional
 monthly `schedule` cron that is commented out — enable it per platform if
 unattended refresh is wanted (except `android-arm64`, which is physically

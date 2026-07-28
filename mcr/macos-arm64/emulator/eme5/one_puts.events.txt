@@ -1,0 +1,7 @@
+evSyncLockAcquireSuccess 97
+evSyncLockRelease 96
+evOsSyscall 1
+evOsWrite 1
+evThreadStart 1
+evThreadEnd 1
+evMemorySnapshot 1

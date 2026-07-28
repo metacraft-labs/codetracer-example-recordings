@@ -1,0 +1,108 @@
+# eme_m9c_2006/one_write — §1A.9 REACH-INDEPENDENT whole-program svc-capture
+# via the FAST INLINE DETOUR tier (no per-syscall trap) one_write recording.
+#
+# Victim: write(1,"one\n",4); return 0;   (direct write syscall.)
+#
+# WHY THIS FIXTURE EXISTS
+# ----------------------------------------------------------------------------
+# The M9c whole-program svc-capture patcher routes each captured svc site
+# through a per-site trampoline reached WITHOUT a per-syscall parent trap.
+# The preferred tier is a `B`->island (±128 MiB).  For an image whose __text
+# is wholly inside the dense dyld shared cache — notably `libsystem_kernel`
+# (the 522-site syscall funnel) — some boot layouts leave NO ±128 MiB-reachable
+# gap for the island, so island placement fails.
+#
+# The §1A.9 fix adds a TIERED, reach-INDEPENDENT per-site patch:
+#   tier 1  B -> island        (fast, no trap; needs a ±128 MiB hole)
+#   tier 2  ADRP DETOUR         (fast, NO trap; needs only a ±4 GiB hole) <== NEW
+#           The svc site is overwritten with an 8-byte ABSOLUTE redirect
+#           `ADRP X17,<stubpage> ; BR X17` (svc + 1 following instruction).
+#           The overwritten following instruction is RELOCATED into a per-site
+#           4 KiB-aligned stub whose body is the SAME guarded in-child capture
+#           body the island tier uses (depth/thread guard, out-param capture,
+#           real-svc re-issue, band append) followed by the relocated
+#           instruction (PC-relative fields fixed up) and an absolute return
+#           to site+8.  Because the redirect is a plain branch pair, EVERY
+#           captured syscall stays entirely in-child — ZERO parent round-trips.
+#   tier 3  BRK + handler       (4 bytes, no reach limit, but ONE PARENT TRAP
+#           PER SYSCALL) — the LAST-RESORT fallback, used only for the
+#           (empirically zero) residual sites whose following instruction the
+#           detour relocator declines.  BRK is what this fixture USED TO use for
+#           libsystem_kernel; the detour replaces it with a trap-free path.
+#
+# The following instruction after a libsystem_kernel svc is empirically always
+# `b.cc` (the syscall error check, `0x54000103`) or `ret` — both relocated fast.
+#
+# RECORDED VIA (ETE-FREE):
+#   CT_STAGE0_INCHILD_SETUP=1 CT_M9_EVERYIMAGE=1 CT_M9C=1 CT_ARC4_HOOK=1
+#   env -u DYLD_LIBRARY_PATH ; interpose dylib built -d:ctLeanRecord ;
+#   driver signed with cs.debugger + thread-set-state entitlements.
+#   COMMITTED driver (reproducible):
+#     ct_cli/tests/record_macos_eme_m9c_2006.nim
+#     cd ct_cli && nim c -r tests/record_macos_eme_m9c_2006.nim
+#     (CT_REC_OUT=<path> to choose output; CT_REC_INSTALL_FIXTURE=1 to refresh
+#      this fixture's replayable subset.)  Replaces the old scratch
+#     zz_rec_m9c_owfree.nim (deleted).
+#
+# WHAT THE RECORDING PROVES (from the .predyld note + dump-events):
+#   0x00018EEC0000 : 169 sites : PATCHED (via DETOUR)   <- CACHE-DYLD re-arm  ***
+#   0x0001001A8000 :  99 sites : PATCHED (via B-island)
+#   0x00018F259000 : 522 sites : PATCHED (via DETOUR)   <- libsystem_kernel
+#   0x000292323000 :   4 sites : PATCHED (via DETOUR)
+#   founding svcs captured : 18 (disk-dyld band) ; whole-program band incl. the
+#   cache-dyld restart : total 2130 evOsPredyldSyscall events in the .ct
+#   (was 107 before the cache-dyld re-arm).
+# The *** line is the fix this fixture proves: the CACHE-dyld's __text (169 svc
+# sites) is scanned + patched at the disk->cache handoff (see REPLAY FRONTIER),
+# so its second-mach_init restart run is captured.  libsystem_kernel's 522 sites
+# are still captured via the FAST detour (no per-syscall BRK trap).
+#
+# BUNDLED IN-REPO (replayable subset; the event stream is self-contained in
+# the .ct — the whole-program band is already drained into it at record):
+#   one_write.ct            main CTFS trace (replayable)
+#   one_write.ct.head.json  recording head
+#   one_write.ct.loadtrap   M7 image-load-trap sequence (base,size, load order)
+#   one_write.ct.m9images   M9 svc-issuing image list (":detour" = §1A.9 tier-2)
+#   one_write.ct.predyld    founding + parent-note dump (tier counts, pin, etc.)
+#   one_write.c             victim source
+#
+# NOT bundled (large; kept durably OUTSIDE the non-LFS repo):
+#   one_write.ct.wpband.1/2 whole-program svc bands (4.6 MB / 13 MB — bloated by
+#                           a file-backed mmap full-region out-param capture)
+# The FULL recording (all sidecars) lives durably at:
+#   ~/mcr-hwtrace/eme_m9c_2006_cachedyld/
+#
+# THE CACHE-DYLD RE-ARM (recorder fix, predyld_svc_capture ``pollRendezvous``):
+#   The founding stream captures the DISK-dyld bring-up (idx 0..17), the LAST of
+#   which (idx 17) is proc_info #336 = ``proc_set_dyld_all_image_info`` — the
+#   DISK->CACHE dyld HANDOFF (``restartWithDyldInCache``).  The cache-dyld then
+#   RE-RUNS mach_init from its OWN __text (inline svc, PC in 0x187E_xxxx) —
+#   thread_selfid (372), platform_syscall (0x80000000), csrctl, mach_vm_allocate,
+#   mach_port_construct(-24), … — the SECOND mach_init run of the double-dyld.
+#   Because the cache-dyld is PRE-MAPPED in the shared cache and restarted into,
+#   it never fires an M7 image-load-trap, so the M9a every-image patcher (which
+#   patches AT the load-trap) formerly never scanned it and the whole restart run
+#   escaped capture (the old 107-event sparsity).  THE FIX: at the cache-detect
+#   hold — cache mapped + pristine, cache-dyld NOT yet run — the cache-dyld
+#   __text is scanned + patched (169 sites, DETOUR tier) via the SAME reach-
+#   independent tiered patcher M9a uses for every other image, so the cache-dyld's
+#   restart svcs flow through the whole-program band.  Result: events #18/#19 in
+#   the .ct are now the 2nd thread_selfid + platform_syscall, and the .ct holds
+#   2130 evOsPredyldSyscall events (was 107).
+#
+# REPLAY FRONTIER (replayMacosCtTrace, this recording):
+#   With the cache-dyld founders in the stream, replay CROSSES the former
+#   cursor-18 platform_syscall wall — it serves the cache-dyld restart from the
+#   recorded stream and advances to founding cursor 88 (80 svcs served, ~25.8M
+#   instructions).  The NEW terminus is a MEMORY FAULT in the cache-dyld's OWN
+#   __text at PC 0x187EEC738: at cursor 87 a whole-program ``mmap`` was captured
+#   as a PREFIX only (recorded len 0xBEEE0 but only 0x1FFBC bytes in the event
+#   payload), so the guest faults reading the un-provisioned tail.  This is a
+#   SEPARATE capture-completeness gap (large file-backed mmap payloads truncated
+#   to a prefix), ORTHOGONAL to the cache-dyld re-arm — the next frontier.
+#   Pinned by test_macos_eme_m9c_2006_replay.nim (cursor 88 + memory-fault PC).
+#
+#   Before this fix the terminus was the cursor-18 platform_syscall unhandled-
+#   trap @0x187F18AF4 (served 13, 107 events) — see git history.  The emulator's
+#   thread_selfid mint (ctfs_bridge, commit b852a963) is now a no-op for this
+#   fixture: the 2nd thread_selfid is served from the stream, not minted.

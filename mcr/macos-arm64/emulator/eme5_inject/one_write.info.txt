@@ -1,0 +1,50 @@
+# eme5_inject/one_write — coherent cp0-seeded macOS arm64 fixture
+#
+# Victim: write(1,"one\n",4); return 0;  (direct write syscall — the
+# main-image interpose table captures it, unlike puts()).
+# Recorded via: ct_cli record --experimental-no-sip-mode (self-entitles +
+# re-execs, captures the OS syscall stream, emits a cp0 boundary SEED at
+# pre-dyld T0 = __dyld_start).
+#
+program            = injected-record
+recordedOs         = rosMacos
+platform.bin bytes = 35
+cp0.regs bytes     = 280  (arm_thread_state64_t + discriminator)
+cp0.mem bytes      = 9732272
+cp0.mem regions    = 11
+cp0.sysregs bytes  = 72   (M-S0MI-7: "CTSR" v1, 5 thread system regs captured at T0)
+totalEvents        = 168
+evOsWrite payload  = 'one\x0A'
+
+# M-S0MI-7 cp0.sysregs — the thread system registers captured at pre-dyld T0
+# via a one-shot MRS stub (no mach thread-state flavor exposes them).  Values
+# are read straight off the CPU while the suspended child single-steps the stub.
+# ON-HOST FINDINGS:
+#   TPIDRRO_EL0 (S3_3_C13_C0_3) = 0        — the kernel does NOT seed the
+#       thread-self pointer before __dyld_start; it is set up later by the
+#       libpthread/TLS bring-up syscall (verified: the SAME MRS reads
+#       ~pthread_self in an initialised main()).  0 is the correct T0 value.
+#   TPIDR_EL0   (S3_3_C13_C0_2) = ~0x200c  — small; macOS uses TPIDRRO (not
+#       TPIDR) for thread-self, so this is not a TLS pointer.
+#   S3_4_C15_C10_6 (Apple IMPDEF) = non-zero, counter-like (varies per record);
+#       this is the ONE system register MRS inside pass 1 — MRS x8 at instr #34
+#       (PC 0x10009B824, opcode 0xD53CFAC8).  Previously returned 0 (an
+#       unmodelled-source read); now seeded to the real captured value.
+#   FPCR / FPSR = 0.
+
+# Pass-1 replayMacosCtTrace outcome (arm64 emulator decode grind):
+seed PC (T0)       = 0x00000001000109C0  (__dyld_start entry)
+seed SP            = 0x000000016FDF0860
+sysRegsSeeded      = 5
+seededTpidrroEl0   = 0x0  (true T0 value; kernel-seeded later)
+unknownSysRegReads = 0    (was 1 before the seed — the IMPDEF MRS now has a value)
+instructionsExec   = 1235
+commpagePagesMapped= 1
+final stop         = mrsDecodeGap
+final stopPC       = 0x000000010000DEFC
+final stopOpcode   = 0x4EA11C00  (ORR Vd.16B — AdvSIMD three-same vector ALU; pass-2 boundary)
+detail             = undecoded arm64 opcode 0x4EA11C00 at PC=0x000000010000DEFC
+# Correct TLS / IMPDEF values did NOT change the reachable trajectory — the
+# captured value is consumed but does not branch differently before the SIMD
+# stop, so the characterized stop is unchanged (the correctness gap is closed
+# without moving the boundary).

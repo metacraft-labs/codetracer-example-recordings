@@ -1,0 +1,127 @@
+# eme5_predyld/one_write — FULL-PATH-B macOS arm64 fixture (M-PDC-6 / M-EME-T0 M3/M4)
+#
+# Victim: write(1,"one\n",4); return 0;  (direct write syscall).
+# Recorded via the inject path WITH CT_STAGE0_INCHILD_SETUP=1 (M-EME-T0
+# Stage 2c/3b): a freestanding libc-free C pre-dyld INSTALLER is injected
+# at BlobVA and runs IN-CHILD as guest code — it reserves the bands,
+# scans + COW-patches dyld's low __text (169 sites), and via an in-stub
+# cache-detect re-arms the SHARED-CACHE dyld __text before it runs.  Every
+# founding svc dyld issues is recorded through the main-thread ring as an
+# ordinary event — evOsPredyldSyscall (type 126).  The stream now carries
+# the FULL in-child DOUBLE-DYLD (restartWithDyldInCache): the disk-dyld
+# founders FOLLOWED by the cache-dyld bring-up (a SECOND -28/-26/372/
+# platform/csrctl run) incl. the cache mach_vm_allocate (the former
+# 0x1861C9584 emulator blocker) carrying its 8-byte VA out-param.  6667
+# founders take the FIRST geids of the main thread's block (1024..7690),
+# strictly ahead of evThreadStart (7691) and the live evOsWrite of "one\n"
+# (geid 7810).  The fixture ALSO bundles the flat installer __text as the
+# CTFS sidecar t_start.predyld_blob — the M3 seed input the emulator
+# executes as guest code (see below).
+#
+program              = injected-record
+recordedOs           = rosMacos
+platform.bin bytes   = 35
+t_start.regs bytes   = 280
+t_start.sysregs bytes = 72
+dsc.bin bytes        = 38
+exe.macho bytes      = 51392  (M-EME-T0 M1: BUNDLED main-exe bytes; the emulator
+                       re-derives the 3 main-exe t_0 regions from these instead
+                       of t_start.mem — self-contained, no on-disk path needed)
+t_start.stack bytes  = 55647  (M-EME-T0 M2: "CTST" SPARSE capture of the
+                       main-thread stack region (8,372,224 B, almost entirely
+                       demand-zero).  The emulator RECONSTRUCTS the stack from this
+                       (zero-fill + runs) instead of t_start.mem, so the Default
+                       seed reads ZERO t_start.mem regions (regionsFromSnapshot==0).
+                       t_start.mem is still EMITTED for LateRecordingStart, so the
+                       .ct does NOT shrink; the stack region there is unchanged.)
+t_start.predyld_blob bytes = 9828  (M-EME-T0 M3: the flat freestanding-C in-child
+                       installer __text.  The emulator M3 seed adds this as an RX
+                       region at BlobVA=0x700000000000 + a zeroed RW RESULT region
+                       at 0x700000080000, sets PC=BlobVA and x0=__dyld_start PC,
+                       16-aligns SP, and EXECUTES the installer as guest code.  At
+                       the installer's terminal brk the emulator restores the
+                       pristine t_0 GPRs and jumps to __dyld_start — reproducing the
+                       recorder's parent handoff + restartWithDyldInCache for free.)
+founding svcs        = 6667  (in-child double-dyld, regular stream as evOsPredyldSyscall)
+totalEvents          = 6835
+evOsWrite payload    = 'one\x0A'
+histogram            = evOsPredyldSyscall 6667 | evSyncLockAcquireSuccess 83 |
+                       evSyncLockRelease 83 | evOsWrite 1 | evThreadStart 1
+#
+# M3/M4 EMULATOR PAYOFF (host macOS arm64, deterministic): with the M3 post-
+# injection seed the emulator EXECUTES the installer (band reservation +
+# 169-site disk-dyld __text COW-patch, SYS DC CVAU / IC IVAU cache-maintenance
+# decoded as no-ops), reproduces the double-dyld handoff, and runs dyld over
+# the patched __text — advancing to 10,929,068 instructions (~10x PAST the
+# pre-M3 1,079,398 stop).  New honest stop: a memory fault at dyld __text PC
+# 0x10006DF08 (LDP W28,W19,[X24], X24=0x35E68FFFA garbage pointer from a dyld
+# internal table walk) — a CPU/state-fidelity gap in dyld's OWN post-handoff
+# bring-up, NOT an OS-sim trap and NOT an undecoded instruction.  Every sysreg
+# read is served from the capture (unknownSysRegReads==0); no OS-sim loud-flag
+# before the fault.
+
+# Founding svcs (evOsPredyldSyscall, geids 1024..1041), in recorded order:
+#   x16 (retval field)  meaning
+#   -28   task_self_trap            served 0x203
+#   -26   mach_reply_port           served 0x303
+#   372   thread_selfid             served (recorded tid)
+#   2147483648  platform_syscall    served (+ TPIDRRO_EL0 tsd-base side-effect)
+#   38    crossarch_trap            served 0x2D (Rosetta probe -> native error)
+#   483   csrctl                    served 0x1 C=1 (SIP query)
+#   -10   mach_vm_allocate          STRUCTURAL — recorded VA 0x1000CC000 ADOPTED
+#                                    (8-byte out-param; range already mapped,reused)
+#   38    crossarch_trap            served
+#   427   fsgetpath                 served 0xE + 14-byte path copyout (dataLen 82)
+#   294   shared_region_check_np    served + 8-byte address copyout (dataLen 76)
+#   -15   mach_vm_map               STRUCTURAL — recorded VA 0x100150000 ADOPTED
+#                                    (8-byte out-param; materialized)
+#   20    getpid                    served
+#   -12   mach_vm_deallocate        STRUCTURAL
+#   38    crossarch_trap            served
+#   483   csrctl                    served
+#   -15   mach_vm_map               STRUCTURAL (kernel-chosen/ANYWHERE)
+#   -12   mach_vm_deallocate        STRUCTURAL
+#   336   (bsd)                     served
+#
+# M-EME-STRUCT-REPLAY (byte-exact): the founding mach_vm_map(#15) at cursor 10 is
+# a VM_FLAGS_ANYWHERE (kernel-placed) allocation (flags 0x3C000001: tag
+# VM_MEMORY_DYLD=60, size 0x20000, mask 0x3FFF, cur_prot RW).  Because a MATCHING
+# recorded evOsPredyldSyscall event sits at the log cursor (trap number -15), the
+# recording AUTHORIZES the placement.  The recorder now CAPTURES the kernel-
+# chosen VA the trap wrote to *address (an 8-byte out-param on the founding
+# mach_vm_allocate/mach_vm_map events — readOutParam in predyld_svc_capture.nim),
+# so the emulator ADOPTS that recorded VA verbatim: it materializes [VA,size) at
+# EXACTLY the recorded VA and writes the VA back to *address — byte-exact with the
+# recording, no guessing.  (Adopted VAs this recording: mach_vm_allocate #6 @
+# 0x1000CC000, already-mapped/reused; mach_vm_map #10 @ 0x100150000, materialized
+# fresh.)  The §4.2.4 ANYWHERE loud-flag now applies ONLY to a structural svc with
+# NO matching recorded event (or one with no out-param VA).
+#
+# Emulator characterized stop (this recording): 1079398 instructions,
+# mrsUnhandledTrap at PC 0x1861C9584 — an OS-sim STRUCTURAL trap, NOT a CPU
+# decode gap.  Deep in dyld's own initialization a NON-FIXED (VM_FLAGS_ANYWHERE)
+# _kernelrpc_mach_vm_allocate_trap (size 0x4000) is issued with NO matching
+# recorded event to adopt a VA from — the §4.2.4 diagnostic invariant fires
+# (M-EME6.3a-2 hook finding) rather than guessing placement.  osSimStubCount==1,
+# firstUnhandledName=_kernelrpc_mach_vm_allocate_trap.  The whole 18-record
+# founding pre-dyld stream is consumed first (predyldServedCount 13, cursor 18,
+# svcTrace.len 19, machTrapCount 8 / 7 handled, bsdSvcCount 11 / 11 handled).
+#
+# The four CPU decode gaps that formerly halted the replay inside dyld bring-up
+# are now ALL decoded, in the order the cascade reached them:
+#   1) LSE atomic memory-ops  (LDADD/…/SWP,   0xB8290108 @ 0x100077240; 206028)
+#   2) PAC branch Z-forms     (BRAAZ/BLRAAZ,  0xD63F093F @ 0x100049BE4; 501908)
+#   3) DP 3-source long/high  (UMADDL/…/UMULH,0x9BAA2136 @ 0x1000776CC; 606517)
+#   4) AdvSIMD copy           (INS/DUP/SMOV/UMOV, 0x6E180420 @ 0x10009E844; 1071493)
+# so the run advances 206028 -> 1079398 instructions and now halts on the
+# OS-sim boundary above.  (M-EME-T0 M2: this fixture was re-recorded so it also
+# BUNDLES the sparse main-thread-stack capture (t_start.stack) alongside the M1
+# exe.macho.  The Default seed RE-DERIVES the dyld AND main-exe t_0 regions from
+# disk (10 regions) AND RECONSTRUCTS the stack from t_start.stack (1 region), so
+# NO region is sourced from t_start.mem (regionsFromSnapshot==0).)  WELL PAST the
+# former mach_vm_map ANYWHERE stop (203679, now served), the former store-release
+# decode gap (202982, now decoded), and the former fsgetpath 198408 OS-sim stop.
+#
+# Follow-up (hand-back): supply the in-process hook (M-EME6.3a-2) that pins the
+# ANYWHERE mach_vm_allocate to its recorded fixed VA, to advance further through
+# dyld init toward the program's evOsWrite("one\n").
