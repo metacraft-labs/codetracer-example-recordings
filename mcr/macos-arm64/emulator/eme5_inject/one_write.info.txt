@@ -48,3 +48,53 @@ detail             = undecoded arm64 opcode 0x4EA11C00 at PC=0x000000010000DEFC
 # captured value is consumed but does not branch differently before the SIMD
 # stop, so the characterized stop is unchanged (the correctness gap is closed
 # without moving the boundary).
+
+# ============================================================================
+# RE-RECORD ATTEMPT (2026-07-28) — MEASURED, BLOCKED, NOT INSTALLED
+# ============================================================================
+#
+# This recording carries predyldRecordCount == 0: NO founding pre-dyld svc
+# stream at all.  It predates founding capture working on this host, and the
+# emulator's own replay diagnostic spells out the cost — dyld's fsgetpath (BSD
+# #427) has "NO RECORDED RESULT TO SERVE ... This trace simply has NO
+# founding-svc (evOsPredyldSyscall) stream, so #427 was never captured for it."
+# The fixture is therefore structurally unable to exercise, honestly, the path
+# it is used to characterize.
+#
+# A re-record was performed with the current recorder via the new committed
+# driver `codetracer-native-recorder/ct_cli/tests/record_macos_eme5_inject.nim`
+# (injected record + CT_STAGE0_INCHILD_SETUP=1).  It produced exactly the
+# richer fixture that was wanted, and it is B12-clean (installer status
+# 0x2C2C2CDE, cacheArmed=yes, recoveredSites=169, handedOff=true, no swallowed
+# install failure anywhere in the .predyld note):
+#
+#                        this fixture         the re-record
+#   predyldRecordCount        0                    2648
+#   .ct events              168                    2816
+#   write event geid       1143                    2767
+#   replay reach     198,408 instr        ~58,460,000 instr
+#   replay stop   fsgetpath @0x1000125B4   access @0x18F25A664
+#   eventsConsumed            0                    1945
+#
+# It was NOT installed.  Four replays of that ONE new recording executed
+# 58,460,287 / 58,461,143 / 58,461,285 / 58,461,184 instructions — every other
+# field identical (stop reason, stopPC, predyldCursor 1945, eventsConsumed,
+# svc counts).  `test_macos_emulator_merkle_emission.nim` asserts
+# `resB.instructionsExecuted == resA.instructionsExecuted` under the name "two
+# armed runs are deterministic": that is a genuine INVARIANT (a given recording
+# must always replay the same way), not a characterization to re-pin, so the
+# fixture cannot land while it is violated and the assertion must not be
+# weakened to make it land.
+#
+# The wobble is NOT introduced by the re-record.  The committed eme_m9c_2006
+# fixture shows it too (47,857,262 / 47,857,262 / 47,857,242) with an unchanged
+# emulator, while eme5_predyld (22,397,342 instructions) is stable across
+# replays.  It lives in the deep libSystem bring-up region only a founding-armed
+# trace reaches; the two wobbling traces stop within 0x2C bytes of each other in
+# libsystem_kernel (0x18F25A638 vs 0x18F25A664).  test_macos_eme_m9c_2006_replay
+# stays green only because it pins predyldCursor/stopPC and never the
+# instruction count.
+#
+# NEXT STEP: find the live-host input the emulator reads in that region (a spin
+# whose iteration count depends on an unrecorded value is the obvious shape),
+# fix it, then re-run the driver with CT_REC_INSTALL_FIXTURE=1 and re-pin.
