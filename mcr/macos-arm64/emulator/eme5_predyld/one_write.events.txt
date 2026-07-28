@@ -1,5 +1,5 @@
-evOsPredyldSyscall 6667
-evSyncLockAcquireSuccess 83
-evSyncLockRelease 83
+evOsPredyldSyscall 2044
+evSyncLockAcquireSuccess 3
+evSyncLockRelease 3
 evOsWrite 1
 evThreadStart 1

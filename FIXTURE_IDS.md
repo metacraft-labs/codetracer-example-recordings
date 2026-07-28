@@ -70,9 +70,15 @@ each fixture's own `<name>.info.txt` is its characterization note.
 | `mcr/macos-arm64/emulator/eme5/null_main.ct`          | `019e3a35-2546-7a00-8aaa-43ff20070001`   | `ct_cli record` (interpose) over `programs/mcr_null_main.c`; pre-meta.dat blocker.                                                       |
 | `mcr/macos-arm64/emulator/eme5/one_puts.ct`           | `019e3a35-2546-7a00-8aaa-43ff20070002`   | `ct_cli record` (interpose) over `programs/mcr_one_puts.c`; same blocker.                                                                |
 | `mcr/macos-arm64/emulator/eme5_inject/one_write.ct`   | `019e3a35-2547-7a00-8aaa-43ff20080001`   | Injected record (`--experimental-no-sip-mode`), cp0-seeded at pre-dyld T0, **no founding stream** — the guard for the emulator's no-`havePredyldStream` fallback. Driver: `ct_cli/tests/record_macos_eme5_inject.nim`. |
-| `mcr/macos-arm64/emulator/eme5_predyld/one_write.ct`  | `019e3a35-2548-7a00-8aaa-43ff20090001`   | Injected record + `CT_STAGE0_INCHILD_SETUP=1` (Stage 2c/3b in-child installer). No committed driver yet.                                  |
-| `mcr/macos-arm64/emulator/eme5_inject_founding/one_write.ct` | `019e3a35-254b-7a00-8aaa-43ff200c0001` | Injected record + `CT_STAGE0_INCHILD_SETUP=1`, recorded with the **lean** interpose dylib. The first fixture whose emulator replay consumes the recorded stream at scale (1945 events). Driver: `ct_cli/tests/record_macos_eme5_inject_founding.nim`. |
+| `mcr/macos-arm64/emulator/eme5_predyld/one_write.ct`  | `019e3a35-2548-7a00-8aaa-43ff20090001`   | Injected record + `CT_STAGE0_INCHILD_SETUP=1` (Stage 2c/3b in-child installer), recorded with the **lean** interpose dylib. The fixture whose emulator replay consumes the recorded stream at scale (1945 events). Driver: `ct_cli/tests/record_macos_eme5_predyld.nim`. |
 | `mcr/macos-arm64/emulator/eme_m9c_2006/one_write.ct`  | `019e3a35-254a-7a00-8aaa-43ff200b0001`   | Injected record + M9c whole-program svc capture. Driver: `ct_cli/tests/record_macos_eme_m9c_2006.nim`.                                    |
+
+The id `019e3a35-254b-7a00-8aaa-43ff200c0001` was minted on 2026-07-29 for a
+short-lived `eme5_inject_founding` directory and **never shipped**: it was
+created as a home for the founding-armed recording while `eme5_predyld` was
+unreplayable and driverless, and was folded into `eme5_predyld` the same day once
+the two were measured to be the same recorder configuration. The id is recorded
+here so it is never reissued.
 
 `eme_ete_2006` (`019e3a35-2549-7a00-8aaa-43ff200a0001`) was **retired** on
 2026-07-28: it had no code consumer in `codetracer-native-recorder`, no

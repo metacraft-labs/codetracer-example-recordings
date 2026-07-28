@@ -1,1 +1,0 @@
-../../../../programs/mcr_one_write.c

@@ -64,9 +64,8 @@ regen_one() {
 	eme5_inject)
 		run_driver eme5_inject ct_cli/tests/record_macos_eme5_inject.nim
 		;;
-	eme5_inject_founding)
-		run_driver eme5_inject_founding \
-			ct_cli/tests/record_macos_eme5_inject_founding.nim
+	eme5_predyld)
+		run_driver eme5_predyld ct_cli/tests/record_macos_eme5_predyld.nim
 		;;
 	eme_m9c_2006)
 		run_driver eme_m9c_2006 ct_cli/tests/record_macos_eme_m9c_2006.nim
@@ -82,15 +81,6 @@ regen_one() {
 		echo "       Add ct_cli/tests/record_macos_eme5.nim before regenerating." >&2
 		exit 1
 		;;
-	eme5_predyld)
-		echo "ERROR: 'eme5_predyld' has no committed re-record driver." >&2
-		echo "       It was produced via the inject path with" >&2
-		echo "       CT_STAGE0_INCHILD_SETUP=1 (M-EME-T0 Stage 2c/3b); the closest" >&2
-		echo "       committed exerciser is" >&2
-		echo "       ct_cli/tests/test_macos_stage2c_inchild_setup_installer.nim." >&2
-		echo "       Add ct_cli/tests/record_macos_eme5_predyld.nim first." >&2
-		exit 1
-		;;
 	eme_ete_2006)
 		echo "ERROR: 'eme_ete_2006' was RETIRED on 2026-07-28 and is no longer" >&2
 		echo "       in this repository. It had no code consumer, no committed" >&2
@@ -102,7 +92,7 @@ regen_one() {
 		;;
 	*)
 		echo "ERROR: unknown fixture '$1'." >&2
-		echo "       Known: eme5 eme5_inject eme5_inject_founding eme5_predyld" >&2
+		echo "       Known: eme5 eme5_inject eme5_predyld" >&2
 		echo "              eme_m9c_2006  (retired: eme_ete_2006)" >&2
 		exit 1
 		;;
@@ -114,10 +104,10 @@ if [ "$#" -gt 0 ]; then
 else
 	# Every fixture that HAS a committed driver.
 	regen_one eme5_inject
-	regen_one eme5_inject_founding
+	regen_one eme5_predyld
 	regen_one eme_m9c_2006
-	echo "NOTE: eme5 and eme5_predyld were skipped — they have no committed"
-	echo "      driver. Name one explicitly to see what it would take."
+	echo "NOTE: eme5 was skipped — it has no committed driver. Name it"
+	echo "      explicitly to see what it would take."
 fi
 
 echo "=== Done ==="
