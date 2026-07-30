@@ -106,3 +106,57 @@
 #   trap @0x187F18AF4 (served 13, 107 events) — see git history.  The emulator's
 #   thread_selfid mint (ctfs_bridge, commit b852a963) is now a no-op for this
 #   fixture: the 2nd thread_selfid is served from the stream, not minted.
+
+# ============================================================================
+# RE-RECORDED 2026-07-30 — the out-param destination fix, and what moved
+# ============================================================================
+# Re-recorded with the committed driver after two recorder fixes landed
+# (codetracer-native-recorder `metacraft-labs/dev`: an out-param rule must prove
+# its destination is an address; a non-address the recording agrees with is not a
+# divergence).  Why a re-record was REQUIRED rather than optional: under
+# `--os-simulation=strong-userspace` the replay runs the injected HOOK IMAGE THAT
+# THE RECORDING CAPTURED (`mbpRegionHookBlob` inside `t_start.bpat`), so a change
+# to the hook's replay arm cannot reach an already-recorded trace at all.
+#
+# WHAT THE OLD RECORDING CONTAINED THAT WAS WRONG.  Its 4th
+# `shared_region_check_np`(294) — event 1944 — carried an 8-byte "out-param" of
+# ZEROS.  The guest legitimately calls that syscall with `x0 == -1` (verified: the
+# emulator reads the same value out of the live guest registers at the same PC,
+# and the site is dyld's own `__shared_region_check_np` stub), so there was no
+# copyout to capture; capture rule 294 was unconditional and fabricated one.  In
+# this recording that produced 8 zero bytes; in a normally-compiled recorder build
+# the same rule SEGFAULTS the append, i.e. a syscall argument could kill a
+# recording.  Event 1944 now correctly carries NO out-param.
+#
+# WHAT MOVED IN THE PINS, and the classification of each:
+#   * strong-userspace `stopPC` 0x1002692B8 -> 0x18F259B58.  A REAL DEFECT WAS
+#     FIXED.  The old stop was the re-issued `svc` inside the reconstructed
+#     capture-stub region, reached because the hook refused the fabricated
+#     out-param.  The new stop is `libsystem_kernel`'s `task_self_trap`, OUTSIDE
+#     that region — the guest got past 1944 and is now blocked by a DIFFERENT,
+#     named gap (see below).  Nothing else moved: cursor 1945, 1896 in-guest
+#     restores, 49 emulator ring skips, zero emulator serves and the
+#     consume-XOR-serve identity are all unchanged, and the stop is still an
+#     honest hard-stop — so no regression is hidden behind the new number.
+#   * the stub-region BOUND assertion flipped direction with the cause, and is
+#     re-expressed as "outside the stub region, inside libsystem_kernel's
+#     __TEXT", which is the B12 never-stubbed signature rather than the old
+#     stub-ran-and-took-its-record-arm signature.
+#   * `t_start.bpat` is now MBP1 v2 (128-byte image blocks, carrying a whole-file
+#     content hash for the interpose dylib).  ACCEPTABLE — the record got richer.
+#     COST, recorded because it is easy to miss: this was the only committed
+#     fixture with a `t_start.bpat`, so no fixture exercises the v1 decode path
+#     any more.  The v1 cases in `ct_events/tests/test_macos_bootstrap_patch.nim`
+#     construct their records and so still cover it, but they are now the ONLY
+#     coverage and must not be thinned out.
+#   * DEFAULT-mode pins did NOT move: 2133 records, arc4 11, predyldServed 1935,
+#     bsdMemoryOps 15, cursor 2009, stopPC 0x18F25A638.  Nor did strong-kernel,
+#     per-thread-stream, commpage or determinism (now also asserted under
+#     strong-userspace, 3 separate processes).
+#
+# THE NEXT GAP THIS FIXTURE NOW EXHIBITS.  The `WHAT THE RECORDING PROVES` list
+# above shows FOUR patched images.  `t_start.bpat` carries only the cache-dyld one
+# plus the interpose dylib, so libsystem_kernel (522 sites at 0x18F259000) and
+# libRosetta (4 sites at 0x292323000) replay PRISTINE and their inline svcs arrive
+# unstubbed — which is exactly the new terminus.  The `mbpImgCacheDylib` MBP1 wire
+# kind exists for these and has no producer.  Record completeness, not divergence.
