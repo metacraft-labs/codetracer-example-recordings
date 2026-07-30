@@ -207,3 +207,46 @@
 # a RAND record where the guest now issues a real `getentropy`.  The arc4 hook has
 # no replay arm yet (it is served emulator-side at a PC, one level up from the
 # ring), so this is a MISSING HOOK REPLAY ARM — not a divergence.
+
+# ============================================================================
+# RE-RECORDED 2026-07-30 — armed with the RECORD-SIDE FOUNDING MEMORY MERKLE
+# ============================================================================
+# The emulator has been emitting a whole-memory root at every founding cursor it
+# serves (2009 of them on this fixture, 92,624-99,347 pages each) for a while.
+# It produced NO VERDICT, because a root with nothing to pair against is not a
+# comparison: the record-side baseline can only be produced by the PARENT,
+# cross-task, at the two holds the M9c capture provides, and it was opt-in — so
+# the committed fixture carried 2009 replay roots and ZERO record roots.
+#
+# `CT_MEM_MERKLE_FOUNDING` is now armed by DEFAULT in the committed driver, and
+# this recording therefore ships a new sidecar:
+#
+#   one_write.ct.founding_merkle.rec   two `REC froot` lines (114 B)
+#       cursor=11    root=FB8F667215F0964A  pages=1,564,468   (CDRV rendezvous)
+#       cursor=2134  root=19A18FB2449AEAAB  pages=1,576,288   (quiescence)
+#
+# NOT bundled: `one_write.ct.founding_merkle.rec.pages`, the per-page
+# `(VA,xxh64)` detail — 188 MB, because the §1A.9 walk covers every readable page
+# of the child including the whole shared cache. It lives with the full recording
+# at ~/mcr-hwtrace/eme_m9c_2006_merkle/ and is what a localization drill needs.
+#
+# Replay reaches cursor 2009, so hold (2) at 2134 has no replay partner: this
+# fixture has exactly ONE pairable cursor, 11.
+#
+# THE FIRST PAIRED VERDICT (default mode, keys aligned):
+#   common VAs 92,652 of 1,545,524 record / 92,668 replay  ->  10 DIFFERING
+#     5  recorder bands   0x700000006000, 0x700000080000..81000,
+#                         0x700000100000, 0x780000000000     (§1A.9 carve-out)
+#     2  disk-dyld __DATA 0x1000C4000, 0x1000CC000           (genuine residual)
+#     3  guest stack/TLS  0x16FDEA000, 0x16FDEB000 (ZERO on the replay side),
+#                         0x16FDEE000
+#   The shared cache, the commpage, the cache-dyld __text and all four patched
+#   images match BYTE-FOR-BYTE — 31 pages that a keying off-by-one had been
+#   reporting as divergence. See docs/mcr-founding-memory-merkle.md.
+#
+# WHAT MOVED IN THE PINS: `predyldRecordCount` 2133 -> 2134, and nothing else.
+# One more founding svc was captured and it sits PAST the stop. Cursor 2009,
+# predyldServed 1935, arc4 11, bsdMemoryOps 15, the stop PC 0x100E9F2B8, and
+# strong-userspace's 1933 in-guest restores / 76 ring skips / zero emulator
+# serves / consume-XOR-serve identity are all UNCHANGED. Recording variance on a
+# fixture that got no poorer — not a behaviour change.

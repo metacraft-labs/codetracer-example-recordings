@@ -94,3 +94,22 @@ Re-recording moves the characterization numbers pinned in the recorder repo's
 tests. That is expected when the fixture legitimately gets richer, and a
 regression when behaviour changed; each fixture's `.info.txt` records what the
 numbers were and why.
+
+## `.founding_merkle.rec` — the memory-axis pairing baseline
+
+`eme_m9c_2006` carries `one_write.ct.founding_merkle.rec`: the record-side
+whole-address-space page-fingerprint ROOTS, taken cross-task by the recorder
+parent at the two holds the M9c capture provides (the CDRV rendezvous and
+quiescence). The emulator emits the same shape per founding cursor, and the two
+pair by common VA — without this sidecar the emulator's roots have nothing to
+compare against and the memory axis returns no verdict at all.
+
+Only the roots (two lines) are bundled. The per-page detail
+(`.founding_merkle.rec.pages`) is **188 MB** — the §1A.9 comparison puts the whole
+dyld shared cache in scope, so the walk covers ~1.56 million pages per hold — and
+lives with the full recording under `~/mcr-hwtrace/eme_m9c_2006_merkle/`. A
+localization drill needs it; a verdict does not.
+
+Recorded automatically: `CT_MEM_MERKLE_FOUNDING` is armed by default in
+`ct_cli/tests/record_macos_eme_m9c_2006.nim`, so `regenerate.sh` reproduces the
+sidecar. `CT_MEM_MERKLE_FOUNDING=0` opts out.
