@@ -1,2 +1,6 @@
-REC froot cursor=11 root=FB8F667215F0964A pages=1564468
-REC froot cursor=2134 root=19A18FB2449AEAAB pages=1576288
+REC froot geid=10 cursor=11 root=2B82A67128D05D1B pages=1564468 detail=yes
+REC froot geid=2006 cursor=2007 root=08E59165F203E967 pages=1567712 detail=yes
+REC froot geid=2007 cursor=2008 root=69BE5781426B7F32 pages=1567712 detail=yes
+REC froot geid=2008 cursor=2009 root=E47F04747C6E39B1 pages=1567712 detail=yes
+REC froot geid=2009 cursor=2010 root=6143D8A882BEEB71 pages=1567716 detail=yes
+REC froot geid=2136 cursor=2134 root=A8958ABC80F2535D pages=1573264 detail=no

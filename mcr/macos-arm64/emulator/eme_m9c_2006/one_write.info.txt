@@ -250,3 +250,73 @@
 # strong-userspace's 1933 in-guest restores / 76 ring skips / zero emulator
 # serves / consume-XOR-serve identity are all UNCHANGED. Recording variance on a
 # fixture that got no poorer — not a behaviour change.
+
+# ============================================================================
+# RE-RECORDED 2026-07-30 — HOLDS AT THE WALL, and the merkle keys by GEID
+# ============================================================================
+# The record-side founding merkle could only be produced at the two holds the
+# in-child capture happens to provide: the CDRV rendezvous (cursor 11) and
+# quiescence (2134).  Replay stops at 2009, so quiescence has no partner and this
+# fixture had exactly ONE pairable cursor — 11, two thousand events away from the
+# divergence the instrument exists to localize.
+#
+# The recorder can now be told to hold at any founding ordinal
+# (`CT_MEM_MERKLE_FOUNDING_HOLDS`), and the committed driver defaults to a bracket
+# around the stop.  This recording therefore carries SIX record roots:
+#
+#   one_write.ct.founding_merkle.rec
+#     geid=10    cursor=11    root=2B82A67128D05D1B  pages=1,564,468  detail=yes
+#     geid=2006  cursor=2007  root=08E59165F203E967  pages=1,567,712  detail=yes
+#     geid=2007  cursor=2008  root=69BE5781426B7F32  pages=1,567,712  detail=yes
+#     geid=2008  cursor=2009  root=E47F04747C6E39B1  pages=1,567,712  detail=yes
+#     geid=2009  cursor=2010  root=6143D8A882BEEB71  pages=1,567,716  detail=yes
+#     geid=2136  cursor=2134  root=A8958ABC80F2535D  pages=1,573,264  detail=no
+#
+# `geid` IS THE PAIRING KEY and `cursor` is annotation — see
+# docs/mcr-founding-memory-merkle.md.  Note the two are NOT a fixed offset apart:
+# at quiescence the record is at cursor 2134 and geid 2136, because
+# ctRecordOsEvent draws from the same issue-order counter.  That is precisely why
+# keying by one and annotating with the other is not redundant, and why the
+# previous count-keyed pairing was able to be silently off by one.
+#
+# NOT bundled: `one_write.ct.founding_merkle.rec.pages`, the per-page (VA,xxh64)
+# detail — 550 MB, because the §1A.9 walk covers every readable page of the child
+# and five of the six holds are drilled.  It lives with the full recording at
+# ~/mcr-hwtrace/eme_wall_holds/ and is what a localization drill needs.
+#
+# NOTHING WAS RE-PINNED.  predyldRecordCount 2134, arc4 11, predyldServed 1935,
+# bsdMemoryOps 15, cursor 2009, stopPC 0x100E9F2B8, and strong-userspace's
+# 1933 in-guest restores / 76 ring skips / consume-XOR-serve identity are all
+# unchanged from the previous recording.  The holds stop the child at a BRK and
+# resume it at PC+4; they do not change what it records.
+#
+# THE FIRST PRE-WALL VERDICT (default mode, geid 2008 = cursor 2009):
+#   common VAs 99,287 of 1,567,712 record / 99,347 replay  ->  68 DIFFERING
+# and the set is essentially CONSTANT across the wall (69 at cursor 2007, 69 at
+# 2008, 68 at 2009, same VAs), so nothing freshly diverges there.  Its shape:
+#     5   recorder bands (§1A.9 carve-out)
+#     8   guest stack, 0x16FDE4000..0x16FDEB000 (4 of them ZERO on the replay side)
+#     11  program range: the interpose dylib's own __DATA (0x100383000..0x10038A000)
+#         plus the main image's first page
+#     5   dyld's anonymous persistent-allocator pool (0x101234000, 0x101268000,
+#         0x101284000, 0x10128C000, 0x1018E8000) — heavily read (28,321 reads of
+#         0x101234000 in the last 400 K loads before the stop)
+#     39  shared-cache __DATA / __DATA_DIRTY of libsystem_c, libsystem_kernel,
+#         libsystem_pthread, libdispatch, libxpc, libcorecrypto, libc++, libdyld
+# i.e. the pre-wall difference is dominated by the record having a live recorder
+# dylib doing libSystem work in the same process, not by one mis-reconstructed
+# word.  Of the 68, 40 are actually READ by the guest in that window; the ones
+# read closest to the stop are dyld __auth_got slots for getattrlist/memset and
+# `__stack_chk_guard` — benign by inspection.
+#
+# The cursor-11 verdict on this matched pair: 9 differing pages —
+#   5  recorder bands   0x700000006000, 0x700000080000..81000, 0x700000100000,
+#                       0x780000000000                       (the §1A.9 carve-out,
+#                       confirmed to be exactly this set and not a superset)
+#   2  disk-dyld __DATA 0x1000C4000, 0x1000CC000
+#   2  guest stack      0x16FDEA000 (ZERO on the replay side), 0x16FDEE000
+# The previous pair reported 10 (three stack pages, two of them unestablished);
+# 0x16FDEB000 now matches.  The unestablished-stack difference therefore tracks
+# how deep the RECORD's stack happened to be scribbled, which is recording
+# variance in the injected apparatus's own footprint — not a fixed reconstruction
+# gap of a specific page.
