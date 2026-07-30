@@ -160,3 +160,50 @@
 # libRosetta (4 sites at 0x292323000) replay PRISTINE and their inline svcs arrive
 # unstubbed — which is exactly the new terminus.  The `mbpImgCacheDylib` MBP1 wire
 # kind exists for these and has no producer.  Record completeness, not divergence.
+
+# ============================================================================
+# RE-RECORDED AGAIN 2026-07-30 — MBP1 now carries ALL FOUR patched images
+# ============================================================================
+# The `WHAT THE RECORDING PROVES` list above has always shown FOUR patched
+# images.  `t_start.bpat` used to describe TWO of them (the cache-dyld, plus the
+# interpose dylib's segments), so `libsystem_kernel` (522 sites) and
+# `libRosetta` (4 sites) replayed PRISTINE and every inline `svc` in them arrived
+# at the emulator unstubbed.  The `mbpImgCacheDylib` wire kind existed with no
+# producer.  It has one now, driven off the patcher's ACTUAL results, and the
+# record reports its own coverage: `MBP1 coverage: patched 4 image(s), carried 4
+# (COMPLETE)` in the .predyld note.
+#
+# `t_start.bpat` now carries, with full site tables:
+#   mbpImgCacheDyld      0x18EEC0000  169 sites  detour   stub 0x1001EC000
+#   mbpImgInterposeDylib 0x100358000   99 sites  ISLAND   stub 0x100E1C000
+#   mbpImgCacheDylib     0x18F259000  522 sites  detour   stub 0x100E5C000
+#   mbpImgCacheDylib     0x292323000    4 sites  detour   stub 0x300000000
+# The dylib's island-tier inventory comes from the patcher's per-site plan, which
+# is the only possible source: an island redirect is a single `B` word and no byte
+# scan of the patched __text can tell it from ordinary code.  The three
+# shared-cache images carry NO content hash and that is a refusal, not a gap —
+# they have no standalone backing file, so there is no host file they may ever be
+# sourced from; the cache's identity is the recorded dsc.bin and the record
+# carries their post-patch __text verbatim.
+#
+# PINS THAT MOVED, all one classification — THE FIXTURE GOT RICHER, reach improved,
+# nothing hidden:
+#   * default-mode `stopPC` 0x18F25A638 -> 0x100E9F2B8.  Cursor 2009 UNCHANGED, as
+#     are the record count, arc4 serves, predyld serves and bsdMemoryOps: the guest
+#     reaches the same event but now through the reconstructed capture stub instead
+#     of the pristine image.
+#   * strong-kernel `stopPC` the same, and its field-for-field equality with the
+#     default mode — the invariant that test owns — still holds.
+#   * strong-userspace: cursor 1945 -> 1967, stubRestored 1896 -> 1915, ringSkips
+#     49 -> 52, `stopPC` 0x18F259B58 -> 0x100E9C2B8.  The consume-XOR-serve
+#     identity still holds exactly (1915 + 52 == 1967) and emulator serves are
+#     still zero, so 22 more events are restored IN-GUEST and nothing became more
+#     permissive.  All 695 detour sites across the three cache images re-derive
+#     byte-for-byte at replay (0 mismatched).
+#
+# THE NEXT GAP: `getentropy`(500) at 0x100E9C2B8 — INSIDE libsystem_kernel's newly
+# reconstructed stub region, so the stub ran and took its RECORD arm.  The recorded
+# head there is the arc4 "RAND" sentinel (0x52414E44): the arc4/CPRNG hook captured
+# a RAND record where the guest now issues a real `getentropy`.  The arc4 hook has
+# no replay arm yet (it is served emulator-side at a PC, one level up from the
+# ring), so this is a MISSING HOOK REPLAY ARM — not a divergence.
