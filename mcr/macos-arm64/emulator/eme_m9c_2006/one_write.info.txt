@@ -321,79 +321,91 @@
 # variance in the injected apparatus's own footprint — not a fixed reconstruction
 # gap of a specific page.
 
+
 # ============================================================================
-# RE-RECORDED 2026-07-31 — the CORRECTED STATE-RECREATION SELECTOR LIST
+# RE-RECORDED 2026-07-31 — corrected selector list, AND a declared recording SHAPE
 # ============================================================================
-# Re-recorded with the committed driver after two long-parked recorder defects
-# were fixed together (codetracer-native-recorder `metacraft-labs/dev`):
+# Two long-parked recorder defects were fixed together, because the in-guest
+# stub's copy of the state-recreation boundary is FROZEN INTO EVERY RECORDING and
+# neither fix could be validated without a re-record:
 #
 #   1. `bsdthread_create` is BSD **360**, not 366.  366 is `bsdthread_register`
-#      — libpthread's one-time registration of its entry points, which creates
-#      nothing.  The emulator's thread-creation arm was dispatched on 366 while
-#      `createGuestThread` read 360's argument layout (x0=start_fn, x1=arg,
-#      x2=stack, x3=pthread-self), so the dormant guest thread was being built
-#      out of a registration frame `(threadstart, wqthread, pthsize)`.
-#      Thread-RANGE derivation reads the create frame's x2, so this was never
-#      cosmetic.
+#      — libpthread's one-time registration, which creates nothing — and the
+#      emulator's thread-creation arm was dispatched on it while its handler
+#      (`createGuestThread`) read 360's argument layout.  Thread-RANGE derivation
+#      reads the create frame's x2, so this was never cosmetic.
+#   2. The boundary was TWO hand-maintained lists that had silently diverged, 9
+#      selectors in the emulator's predicate against 10 in the stub's array.  It
+#      is now ONE array (`StateRecreationBoundarySelectors`), imported by both.
 #
-#   2. The state-recreation boundary was TWO hand-maintained lists that had
-#      silently diverged, 9 selectors in the emulator's predicate against 10 in
-#      the in-guest stub's array.  It is now ONE array
-#      (`StateRecreationBoundarySelectors`), imported by both.
+# THE PAYOFF, MEASURED on this fixture — all three emulator-backed modes replay
+# END TO END:
 #
-# WHY A RE-RECORD WAS REQUIRED, not optional: the stub's copy of that list is
-# FROZEN INTO EVERY RECORDING at record time.  With the previous fixture and the
-# corrected predicates, `--os-simulation=strong-userspace` regressed 2009 -> 1953
-# and stopped with "BSD bsdthread_register (x16=0x16E, n=366) reached the
-# emulator OS layer but is NOT one of the three state-recreation families" — the
-# old stub still keeps a real `svc` for 366, which the OS layer no longer claims.
-# That measurement is exactly what had kept the fix parked.
+#   default          cursor 2135  mrsExit  terminated=true  exitCode=0  "one\n"
+#   strong-userspace cursor 2135  mrsExit  terminated=true  exitCode=0  "one\n"
+#   strong-kernel    cursor 2135  mrsExit  terminated=true  exitCode=0  "one\n"
 #
-# WHAT MOVED (all three emulator-backed modes, measured on this recording):
-#   predyldCursor       2009 -> 2129   (of 2134 recorded)
-#   stopPC       0x100E9F2B8 -> 0x100EBB2B8
-#   predyldServed       1935 -> 1955   (default and strong-kernel)
-#   arc4Served            11 -> 12
-#   stubRestored        1933 -> 1953   (strong-userspace)
-#   ringSkips             76 -> 176    (strong-userspace)
-#   predyldRecordCount  2134 -> 2134   UNCHANGED
-#   bsdMemoryOps / mwlFixups / mwlRegions   15 / 91 / 2   ALL UNCHANGED
+# (`--os-simulation=weak-userspace` is not an emulator mode at all: it selects
+# NATIVE replay and the arm64 driver refuses it by name.)
 #
-# THE WALL MOVED AND CHANGED CHARACTER; IT DID NOT FALL.  The stop is no longer a
-# `getattrlist`(220) boundary refusal but an `mmap`(197) — a family-3 syscall
-# that is SUPPOSED to reach the OS layer — refused because the guest asked for a
-# mapping the recorded stream head (#-15, `mach_vm_map`) does not describe:
+# strong-userspace is the one that could not work before: with the PREVIOUS
+# fixture and the corrected predicates it stopped at 1953 on
+# "BSD bsdthread_register (n=366) reached the emulator OS layer but is NOT one of
+# the three state-recreation families" — the old stub keeps a real `svc` for 366
+# that the OS layer no longer claims.  The mirror also holds: this recording
+# replayed by the PRE-FIX emulator stops at 2120 on "bsd#360 ... is NOT one of the
+# three state-recreation families".  Those two are the frozen-list mechanism seen
+# from both sides, and together they are why the fix and the re-record are one
+# change.
 #
-#   library/image mapping mmap (#197) issued at PC=0x0000000100EBB2B8 but is NOT
-#   at the recorded stream head [cursor 2129; head #-15] — a state-recreation
-#   request can only be served pinned to its recorded result, so this is an
-#   upstream divergence, never a fabricated mapping
+# ── WHAT WAS *NOT* CAUSED BY THE SELECTOR FIX (a correction to the record) ────
+# An earlier version of this note, and the commit that carried it, attributed
+#   predyldServed 1935 -> 1955  and  arc4Served 11 -> 12
+# to the selector fix.  THAT ATTRIBUTION IS WRONG.  Measured: `eme_sp3` — a
+# recording made BEFORE the selector fix, replayed by the PRE-FIX emulator —
+# already reports served=1955 and arc4=12.  Those deltas come from the recording
+# GENERATION (the SP-stamped class, which the previously committed fixture
+# pre-dated), not from the selector change.  The selector change's actual effect
+# on the pins is: nothing in default/strong-kernel, and it is what makes
+# strong-userspace reach the exit at all.
 #
-# All three modes (default, strong-userspace, strong-kernel) now stop at the SAME
-# cursor, the SAME PC, with the SAME text.  `--os-simulation=weak-userspace` is
-# not an emulator mode at all: it selects NATIVE replay and the arm64 driver
-# refuses it by name.
+# ── THIS FIXTURE IS PINNED TO A DECLARED RECORDING SHAPE ──────────────────────
+# The program does NOT record the same founding svc sequence every run, and one
+# of the shapes it produces CANNOT be replayed to the exit by the current
+# emulator.  The shape criterion — fixed BEFORE any replay was run, and a
+# property of the RECORDING only — is:
 #
-# NOT REACHED: `mrsExit`.  The recorded stream is 2134 events and the program's
-# own write/exit are past cursor 2129, so `terminated` is false, `exitCode` is 0
-# only because it was never set, and `capturedOutput` is empty in all three
-# modes.  This fixture still does not demonstrate end-to-end replay.
+#     2133 founding events AND exactly 3 four-MiB `mach_vm_map(-15)` allocations
 #
-# THREAD ATTRIBUTION, MEASURED on this recording (12th attempt at an interleave):
-#   bsdthread_create(360) at rec[2120]; the program's own write at rec[2134].
-#   Distinct ctTids across the whole trace: 1 ({0}).  Max ctTid stamped anywhere:
-#   0.  So the worker exists in the stream for a 14-event window and issues NOT
-#   ONE recorded syscall in it — the attribution gate "a worker's
-#   __thread_selfid interleaved before the program's write is attributed to the
-#   worker" stays OPEN.  It was NOT re-recorded to chase; this is what the one
-#   recording made after the selector fix happened to contain.
+# A recording carrying a FOURTH 4 MiB map (flags 0x2004000 = VM_FLAGS_OVERWRITE |
+# user tag 2, i.e. a malloc-zone growth) has one extra event at index 2129; the
+# streams are identical for their first 2129 events and everything after shifts
+# by one.  Replay then stops at cursor 2129 in all three modes with
 #
-# THE FOUNDING-MERKLE HOLDS LAND ON THEIR REQUESTED CURSORS AGAIN.  The first
-# attempt at this re-record reported, four times,
-#   foundingMerkle(hold): ordinal=2007 cursor=2018 ⚠ ORDINAL/CURSOR DISAGREE
-# (2018 - 2007 = 11 = the arc4 count).  Cause: the merkle-hold block had just
-# been split out of `geidStateVA` into its own `ct_founding_append` parameter and
-# only the svc stub was updated — the arc4 entry trampoline is the SECOND caller
-# and was passing whatever the guest had in x5.  Fixed, then re-recorded; this
-# fixture's roots are at cursors 11 / 2007 / 2008 / 2009 / 2010 / 2134, exactly
-# as requested.
+#   library/image mapping mmap (#197) issued at PC=0x…2B8 but is NOT at the
+#   recorded stream head [cursor 2129; head #-15]
+#
+# THAT IS A REPLAY-SIDE GAP, NOT A RECORDING DEFECT.  A 4-map recording is
+# legitimate — recordings need not be deterministic.  What is unexplained is why
+# the REPLAYED guest's allocator takes a different growth decision from the
+# recorded one; if reconstruction were faithful it would take the same one.  It
+# is filed as an open reconstruction-fidelity gap in
+# `codetracer-specs` MCR-Emulator-Replay-Contract-macOS.md, "A recording the
+# replay cannot reproduce is a reconstruction gap, not a recording defect",
+# together with the measurements that rule the selector fix out as its cause
+# (a 2x2 over {recording} x {replay code}, and `eme_spw6` — a recording made
+# before any of this work — reproducing the same 2129 stop under the pre-fix
+# emulator).
+#
+# SO A GREEN FIXTURE HERE IS NOT FULL COVERAGE.  It means "the replay reproduces
+# the shape we pinned".  Any re-record MUST report the shape it drew, and a
+# recording of the other shape must not be committed as though the terminus had
+# moved.
+#
+# THREAD ATTRIBUTION on this recording, measured: 157 DISTINCT RAW SP STAMPS over
+# the founding events (the `MOV X2, SP` stamp is live), resolving to ONE logical
+# id, {0}; `attributionActive` is true and the table carries two ranges — main
+# [0x16F604000,0x16FE00000) and the worker [0x8000000000,0x8000100000), the
+# latter derived from the 360 create frame.  For contrast, the fixture this
+# replaces had ONE distinct raw stamp whose value was 0x00000000 and
+# `attributionActive` false — it pre-dated the stamp entirely.
