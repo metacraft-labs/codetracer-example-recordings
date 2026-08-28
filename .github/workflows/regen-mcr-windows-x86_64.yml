@@ -65,7 +65,7 @@ jobs:
         # checkout and dot-sources codetracer's Windows DIY env script
         # (../codetracer/env.ps1), provisioning nim / just / vcc / zstd so
         # `just build-ct-mcr` can produce ct_mcr.exe below.
-        uses: metacraft-labs/metacraft-github-actions/setup-dev-env@main
+        uses: metacraft-labs/metacraft-github-actions/setup-dev-env@dev
         with:
           env-flavor: windows-diy
           gh-token: ${{ steps.app-token.outputs.token }}

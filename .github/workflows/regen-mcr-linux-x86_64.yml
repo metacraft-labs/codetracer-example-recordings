@@ -70,7 +70,7 @@ jobs:
       #   ../codetracer-native-recorder -> ct-mcr source (just build-ct-mcr)
       # Clone both adjacent to this checkout so `$REPO_ROOT/../<repo>` resolves.
       - name: Clone codetracer sibling
-        uses: metacraft-labs/metacraft-github-actions/clone-repo@main
+        uses: metacraft-labs/metacraft-github-actions/clone-repo@dev
         with:
           repo: metacraft-labs/codetracer
           ref: ${{ github.event.inputs.codetracer_ref }}
@@ -80,7 +80,7 @@ jobs:
 
       - name: Clone codetracer-native-recorder sibling
         # No .gitmodules in the recorder, so submodules: 'false'.
-        uses: metacraft-labs/metacraft-github-actions/clone-repo@main
+        uses: metacraft-labs/metacraft-github-actions/clone-repo@dev
         with:
           repo: metacraft-labs/codetracer-native-recorder
           ref: ${{ github.event.inputs.native_recorder_ref }}
