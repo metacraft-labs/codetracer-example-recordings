@@ -37,7 +37,16 @@ on:
       native_recorder_ref:
         description: "codetracer-native-recorder git ref (ct-mcr + receiver source)"
         required: false
-        default: "main"
+        # `dev`, not `main`: the recorder is a PRODUCT repository, whose
+        # mainline is `dev` (metacraft-dev-guidelines/policies/branching-policy.md
+        # — "never `main`").  This defaulted to `main` and that is not a
+        # cosmetic slip.  Checked 2026-09-12: the recorder's `main` was
+        # weeks behind `dev` and pinned a trace-format writer that still
+        # stamped `meta.dat` schema **v3**, which current readers refuse by
+        # name.  A regen run with the old default would have rewritten the
+        # fixture and left it just as unreadable — a green workflow producing
+        # a broken artifact.
+        default: "dev"
 
 concurrency:
   group: regen-mcr-android-arm64-${{ github.ref }}

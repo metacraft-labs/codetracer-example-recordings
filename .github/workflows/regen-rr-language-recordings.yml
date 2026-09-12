@@ -32,7 +32,12 @@ on:
       native_recorder_ref:
         description: "codetracer-native-recorder git ref"
         required: false
-        default: "main"
+        # `dev`, not `main`: the recorder is a PRODUCT repository, whose
+        # mainline is `dev` (metacraft-dev-guidelines/policies/branching-policy.md
+        # — "never `main`").  Checked 2026-09-12: the recorder's `main` was
+        # weeks behind `dev`.  Same correction as the five `regen-mcr-*`
+        # workflows.
+        default: "dev"
   # Monthly refresh — uncomment to enable.
   # schedule:
   #   - cron: "0 5 1 * *" # 05:00 UTC on the 1st of each month

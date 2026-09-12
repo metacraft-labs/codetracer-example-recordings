@@ -1,0 +1,349 @@
+# Regenerate the macOS ARM64 MCR recording fixtures.
+#
+# THE PLATFORM WITH FIXTURES AND NO WORKFLOW.  `mcr/` holds six platform
+# directories; until this file existed, five of them had a regen workflow and
+# macos-arm64 did not — even though it carries MORE committed `.ct` files than
+# any other platform (the two platform traces plus the five-file `emulator/`
+# family).  The regen SCRIPTS were both already here; only the CI entry point
+# was missing.
+#
+# Two families live under `mcr/macos-arm64/`, with very different runner
+# requirements, so they are two jobs and the dispatch input picks:
+#
+#   platform  -> `mcr/macos-arm64/regenerate.sh`
+#                trace.ct + trace-portable.ct, recorded in COOPERATIVE mode.
+#                Needs an Apple Silicon macOS runner.  Does NOT need SIP off.
+#
+#   emulator  -> `mcr/macos-arm64/emulator/regenerate.sh`
+#                eme5_inject / eme5_predyld / eme_m9c_2006, recorded through
+#                the INJECTED record path.  Needs an Apple Silicon macOS
+#                runner with **SIP DISABLED** (the injected path PC-hijacks a
+#                suspended child pre-dyld) and a QUIET host (concurrent
+#                recording suites SIGKILL each other), which is why this job
+#                sets `concurrency` to a single global group and is never the
+#                default.
+#
+# KNOWN GAP, DELIBERATELY NOT PAPERED OVER: the `emulator/eme5` configuration
+# (`null_main.ct`, `one_puts.ct`) has NO committed re-record driver, so no
+# workflow can regenerate it.  `mcr/macos-arm64/emulator/regenerate.sh` fails
+# loudly and says what it would take:
+# `ct_cli/tests/record_macos_eme5.nim` in the recorder repo.  Four of the
+# recorder's currently-red macOS emulator rows are blocked on exactly those two
+# files, so that driver is the next thing to write — not another workflow.
+#
+# Manual (`workflow_dispatch`) is the safe default; a monthly refresh cron is
+# provided but commented out, matching the five sibling workflows.
+
+name: "Regenerate MCR (macos-arm64)"
+
+on:
+  workflow_dispatch:
+    inputs:
+      fixtures:
+        description: "Which fixture family to regenerate"
+        required: false
+        type: choice
+        default: "platform"
+        options:
+          - platform
+          - emulator
+          - both
+      codetracer_ref:
+        description: "codetracer git ref (dev shell provider)"
+        required: false
+        default: "dev"
+      native_recorder_ref:
+        description: "codetracer-native-recorder git ref (ct-mcr source)"
+        required: false
+        default: "dev"
+  # Monthly refresh — uncomment to enable.
+  # schedule:
+  #   - cron: "0 4 1 * *" # 04:00 UTC on the 1st of each month
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  regen-mcr-macos-arm64:
+    if: >-
+      github.event.inputs.fixtures == 'platform' ||
+      github.event.inputs.fixtures == 'both' ||
+      github.event.inputs.fixtures == ''
+    # Self-hosted Apple Silicon runner.  SIP state is irrelevant here:
+    # `mcr/macos-arm64/regenerate.sh` records in cooperative mode.
+    runs-on: [self-hosted, macos]
+    name: regenerate (MCR, macos-arm64 platform)
+    concurrency:
+      group: regen-mcr-macos-arm64-platform-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - name: Generate CI token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.CI_TOKEN_PROVIDER_APP_ID }}
+          private-key: ${{ secrets.CI_TOKEN_PROVIDER_PRIVATE_KEY }}
+          owner: metacraft-labs
+
+      - name: Checkout example recordings
+        uses: actions/checkout@v5
+        with:
+          lfs: true
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Verify the runner is Apple Silicon
+        # Fail fast and by name: an x86_64 macOS runner would produce a
+        # fixture for the wrong architecture rather than an error.
+        run: |
+          if [ "$(uname -s)" != "Darwin" ] || [ "$(uname -m)" != "arm64" ]; then
+            echo "::error::this job needs macOS/arm64; runner is $(uname -s)/$(uname -m)."
+            exit 1
+          fi
+
+      - name: Set up Nix
+        uses: metacraft-labs/nixos-modules/.github/setup-nix@main
+        with:
+          trusted-public-keys: ${{ vars.ATTIC_TRUSTED_PUBLIC_KEY }}
+          substituters: ${{ vars.ATTIC_SUBSTITUTER }}
+
+      - name: Configure Nix for private repos
+        run: |
+          mkdir -p ~/.config/nix
+          echo "access-tokens = github.com=${{ steps.app-token.outputs.token }}" >> ~/.config/nix/nix.conf
+
+      # The regen script computes its siblings relative to the repo root:
+      #   ../codetracer                 -> nix dev shell (cc, ct-mcr, nim, direnv)
+      #   ../codetracer-native-recorder -> ct-mcr source
+      - name: Clone codetracer sibling
+        uses: metacraft-labs/metacraft-github-actions/clone-repo@dev
+        with:
+          repo: metacraft-labs/codetracer
+          ref: ${{ github.event.inputs.codetracer_ref }}
+          path: ${{ github.workspace }}/../codetracer
+          gh-token: ${{ steps.app-token.outputs.token }}
+          submodules: "true"
+
+      - name: Clone codetracer-native-recorder sibling
+        # No .gitmodules in the recorder, so submodules: 'false'.
+        uses: metacraft-labs/metacraft-github-actions/clone-repo@dev
+        with:
+          repo: metacraft-labs/codetracer-native-recorder
+          ref: ${{ github.event.inputs.native_recorder_ref }}
+          path: ${{ github.workspace }}/../codetracer-native-recorder
+          gh-token: ${{ steps.app-token.outputs.token }}
+          submodules: "false"
+
+      - name: Allow direnv in siblings
+        run: |
+          nix develop "$(pwd)/../codetracer" --command direnv allow "$(pwd)/../codetracer"
+          nix develop "$(pwd)/../codetracer" --command direnv allow "$(pwd)/../codetracer-native-recorder"
+
+      - name: Regenerate macos-arm64 MCR platform fixtures
+        # Mirrors the documented invocation:
+        #   direnv exec ../codetracer bash mcr/macos-arm64/regenerate.sh
+        run: |
+          nix develop "$(pwd)/../codetracer" --command \
+            direnv exec "$(pwd)/../codetracer" bash mcr/macos-arm64/regenerate.sh
+
+      - name: Report the meta.dat schema version of what was produced
+        # A regen that silently reproduces the OLD schema is the failure this
+        # workflow exists to prevent: on 2026-09-12 every committed fixture in
+        # this repo was meta.dat v3 against a reader that refuses v3, and the
+        # five existing regen workflows all defaulted `native_recorder_ref` to
+        # a branch whose pinned writer still stamped v3.  Print the version so
+        # the PR reviewer can see it without opening the container.
+        if: always()
+        run: |
+          for f in mcr/macos-arm64/trace.ct mcr/macos-arm64/trace-portable.ct; do
+            [ -e "$f" ] || continue
+            python3 - "$f" <<'PY'
+          import struct, sys
+          p = sys.argv[1]
+          d = open(p, 'rb').read()
+          i = d.find(b'CTMD')
+          if i < 0:
+              print(f"{p}: no CTMD magic (no binary meta.dat)")
+          else:
+              print(f"{p}: meta.dat schema version {struct.unpack_from('<H', d, i + 4)[0]}")
+          PY
+          done
+
+      - name: Upload refreshed fixtures artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcr-macos-arm64
+          path: |
+            mcr/macos-arm64/trace.ct
+            mcr/macos-arm64/trace-portable.ct
+            mcr/macos-arm64/binaries/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Open pull request with refreshed fixtures
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          add-paths: mcr/macos-arm64
+          branch: regen/mcr-macos-arm64
+          delete-branch: true
+          title: "Regenerate MCR macos-arm64 fixtures"
+          commit-message: "chore(mcr): regenerate macos-arm64 recording fixtures"
+          body: |
+            Automated regeneration of the macos-arm64 MCR platform recording
+            fixtures (`trace.ct` + `trace-portable.ct`) produced by
+            `mcr/macos-arm64/regenerate.sh` on a self-hosted Apple Silicon
+            runner.
+
+            Check the "Report the meta.dat schema version" step before merging:
+            a fixture is only useful to consumers whose reader accepts the
+            schema it was written at.
+
+            Recorded against:
+            - codetracer @ `${{ github.event.inputs.codetracer_ref }}`
+            - codetracer-native-recorder @ `${{ github.event.inputs.native_recorder_ref }}`
+
+  regen-mcr-macos-arm64-emulator:
+    if: >-
+      github.event.inputs.fixtures == 'emulator' ||
+      github.event.inputs.fixtures == 'both'
+    # Apple Silicon runner with SIP DISABLED.  `sip-off` is a REQUIRED label,
+    # not decoration: `mcr/macos-arm64/emulator/regenerate.sh` refuses to run
+    # when `csrutil status` does not say disabled, so a runner without it
+    # fails the job rather than producing anything.
+    runs-on: [self-hosted, macos, sip-off]
+    name: regenerate (MCR, macos-arm64 emulator)
+    # Global, NOT per-ref: the emulator drivers need a quiet host — concurrent
+    # recording suites SIGKILL each other — so two runs of this job must never
+    # overlap even from different branches.  `cancel-in-progress: false` so a
+    # long recording is queued behind, not killed halfway.
+    concurrency:
+      group: regen-mcr-macos-arm64-emulator
+      cancel-in-progress: false
+    steps:
+      - name: Generate CI token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.CI_TOKEN_PROVIDER_APP_ID }}
+          private-key: ${{ secrets.CI_TOKEN_PROVIDER_PRIVATE_KEY }}
+          owner: metacraft-labs
+
+      - name: Checkout example recordings
+        uses: actions/checkout@v5
+        with:
+          lfs: true
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Verify Apple Silicon + SIP disabled
+        # The same two preconditions the regen script checks, hoisted so the
+        # job fails in seconds with a runner-configuration message instead of
+        # after a full Nix evaluation.
+        run: |
+          if [ "$(uname -s)" != "Darwin" ] || [ "$(uname -m)" != "arm64" ]; then
+            echo "::error::this job needs macOS/arm64; runner is $(uname -s)/$(uname -m)."
+            exit 1
+          fi
+          if ! csrutil status 2>/dev/null | grep -qi disabled; then
+            echo "::error::SIP is enabled on this runner. The injected record path cannot run here; the runner needs 'csrutil disable' (recovery mode) and the 'sip-off' label."
+            exit 1
+          fi
+          csrutil status
+
+      - name: Set up Nix
+        uses: metacraft-labs/nixos-modules/.github/setup-nix@main
+        with:
+          trusted-public-keys: ${{ vars.ATTIC_TRUSTED_PUBLIC_KEY }}
+          substituters: ${{ vars.ATTIC_SUBSTITUTER }}
+
+      - name: Configure Nix for private repos
+        run: |
+          mkdir -p ~/.config/nix
+          echo "access-tokens = github.com=${{ steps.app-token.outputs.token }}" >> ~/.config/nix/nix.conf
+
+      - name: Clone codetracer sibling
+        uses: metacraft-labs/metacraft-github-actions/clone-repo@dev
+        with:
+          repo: metacraft-labs/codetracer
+          ref: ${{ github.event.inputs.codetracer_ref }}
+          path: ${{ github.workspace }}/../codetracer
+          gh-token: ${{ steps.app-token.outputs.token }}
+          submodules: "true"
+
+      - name: Clone codetracer-native-recorder sibling
+        uses: metacraft-labs/metacraft-github-actions/clone-repo@dev
+        with:
+          repo: metacraft-labs/codetracer-native-recorder
+          ref: ${{ github.event.inputs.native_recorder_ref }}
+          path: ${{ github.workspace }}/../codetracer-native-recorder
+          gh-token: ${{ steps.app-token.outputs.token }}
+          submodules: "false"
+
+      - name: Allow direnv in siblings
+        run: |
+          nix develop "$(pwd)/../codetracer" --command direnv allow "$(pwd)/../codetracer"
+          nix develop "$(pwd)/../codetracer" --command direnv allow "$(pwd)/../codetracer-native-recorder"
+
+      - name: Regenerate macos-arm64 MCR emulator fixtures
+        # The script drives the three fixtures that HAVE a committed driver
+        # (eme5_inject, eme5_predyld, eme_m9c_2006) and prints a note that
+        # `eme5` was skipped because it has none.  It self-signs the drivers
+        # ad-hoc with the SIP-off dev entitlements and re-execs.
+        run: |
+          nix develop "$(pwd)/../codetracer" --command \
+            bash mcr/macos-arm64/emulator/regenerate.sh
+
+      - name: Report the meta.dat schema version of what was produced
+        if: always()
+        run: |
+          for f in mcr/macos-arm64/emulator/*/*.ct; do
+            [ -e "$f" ] || continue
+            python3 - "$f" <<'PY'
+          import struct, sys
+          p = sys.argv[1]
+          d = open(p, 'rb').read()
+          i = d.find(b'CTMD')
+          if i < 0:
+              print(f"{p}: no CTMD magic (no binary meta.dat)")
+          else:
+              print(f"{p}: meta.dat schema version {struct.unpack_from('<H', d, i + 4)[0]}")
+          PY
+          done
+
+      - name: Upload refreshed fixtures artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcr-macos-arm64-emulator
+          path: mcr/macos-arm64/emulator/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Open pull request with refreshed fixtures
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          add-paths: mcr/macos-arm64/emulator
+          branch: regen/mcr-macos-arm64-emulator
+          delete-branch: true
+          title: "Regenerate MCR macos-arm64 emulator fixtures"
+          commit-message: "chore(mcr): regenerate macos-arm64 emulator recording fixtures"
+          body: |
+            Automated regeneration of the macos-arm64 MCR **emulator** fixtures
+            produced by `mcr/macos-arm64/emulator/regenerate.sh` on a
+            SIP-disabled Apple Silicon runner.
+
+            Covers `eme5_inject`, `eme5_predyld` and `eme_m9c_2006`.
+            **`eme5` is NOT covered** — it has no committed re-record driver;
+            see `mcr/macos-arm64/emulator/README.md`.
+
+            Re-recording MOVES the characterization numbers the recorder
+            repo's tests pin (instruction counts, stop PCs, geids, svc
+            tables). Each fixture's `<name>.info.txt` records what they were.
+            **Classify every moved value as "richer" or "regression" before
+            re-pinning it** — do not merge this PR on a green diff alone.
+
+            Recorded against:
+            - codetracer @ `${{ github.event.inputs.codetracer_ref }}`
+            - codetracer-native-recorder @ `${{ github.event.inputs.native_recorder_ref }}`
