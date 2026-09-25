@@ -53,7 +53,7 @@ run_driver() {
 	echo ">>> $fixture — $driver"
 	(
 		cd "$NATIVE_RECORDER/ct_cli"
-		CT_REC_INSTALL_FIXTURE=1 direnv exec "$NATIVE_RECORDER" \
+		CT_REC_INSTALL_FIXTURE=1 repro exec "$NATIVE_RECORDER" -- \
 			nim c -r "${driver#ct_cli/}"
 	)
 	echo ""

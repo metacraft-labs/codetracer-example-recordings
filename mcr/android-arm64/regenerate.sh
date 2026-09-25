@@ -135,7 +135,7 @@ echo ">>> Building stream-receiver helper (Nim)..."
 RECEIVER_SRC="$NATIVE_RECORDER/ct_cooperative/tests/android_stream_receiver_helper.nim"
 RECEIVER_BIN="$SCRIPT_DIR/binaries/stream_receiver_helper"
 
-direnv exec "$NATIVE_RECORDER" nim c \
+repro exec "$NATIVE_RECORDER" -- nim c \
   -o:"$RECEIVER_BIN" \
   --threads:on \
   "$RECEIVER_SRC"
