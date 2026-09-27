@@ -1,0 +1,143 @@
+# THE MCL STANDARD HOOK SET (`mcl-standard-hooks`) FOR codetracer-example-recordings,
+# with one member deliberately omitted AND THE OMISSION DECLARED HERE.
+#
+# metacraft-dev-guidelines/policies/repo-requirements.md §4.3 names this repo as
+# the single repository in which `*.ct` recordings may be committed, and says the
+# exception must be **declared** in the consuming repo "rather than obtained by
+# leaving the hook out". Before this file existed, this repo had no `flake.nix`
+# and no `.pre-commit-config.yaml`, so it had no hooks at all — which means it
+# held its permission by having nothing to opt out of. That is exactly the shape
+# §4.3 forbids: an exception nobody can find, and no gate on anything else
+# either. This file is the declaration.
+#
+# WHY A COMMITTED CONFIG AND NOT A NIX-GENERATED ONE. §4.1: pre-commit
+# configuration is managed outside flakes here, because flakes are not supported
+# on Windows, and "a repo that is deliberately flake-free for Windows support is
+# not defective; its fix is a committed config, not a new flake". This repo is
+# flake-free. A `/nix/store` symlink produces nothing on Windows and nothing
+# outside the devShell — measured: in a plain `git worktree` of `codetracer`,
+# whose config is such a symlink, the config is simply absent.
+#
+# `.gitignore` used to list `.pre-commit-config.yaml` under the heading
+# "Nix-generated pre-commit config". That line is removed in the same commit as
+# this file; it is what made the committed form impossible.
+#
+# Installation:  prek install --install-hooks
+# Run manually:  prek run --all-files
+#
+# Tools the `language: system` hooks need on PATH (Nix devShell on Linux/macOS,
+# winget/scoop/chocolatey on Windows): editorconfig-checker, nixfmt, tofu,
+# prettier.
+#
+# ----------------------------------------------------------------------------
+# THE DECLARED EXCEPTION: `ban-added-ct-recordings` IS ABSENT ON PURPOSE
+# ----------------------------------------------------------------------------
+#
+# The standard set's third member is
+#
+#     - repo: https://github.com/metacraft-labs/devops-modules
+#       hooks:
+#         - id: ban-added-ct-recordings
+#
+# and it is **not** in the `repos:` list below. Reason, stated so that a reader
+# comparing this file with `git-hooks/mcl-standard-hooks.yaml` finds the answer
+# here instead of concluding the set drifted:
+#
+#   This repo IS the exception §4.3 grants. Its entire purpose is to hold
+#   CodeTracer recordings as committed fixtures — 15 tracked `*.ct` files at
+#   `3ee49c9`, plus seven unpacked trace trees under `<lang>/flow_test/`.
+#   Enabling `ban-added-ct-recordings` here would refuse every regeneration that
+#   adds a platform, i.e. it would refuse the repo's reason to exist. The
+#   equivalent declaration in the flake form is
+#   `mcl.gitHooks.committedBinaries.allowCommittedCtRecordings = true`; §4.3's
+#   YAML form is "omits the hook id with a comment saying why", which is this
+#   comment.
+#
+#   Do NOT copy this omission into another repo. Everywhere else a test that
+#   needs a recording records it on the fly, so it cannot go stale against the
+#   recorder that produced it.
+#
+# ----------------------------------------------------------------------------
+# WHAT THE `exclude` COVERS, AND WHAT IT DELIBERATELY DOES NOT
+# ----------------------------------------------------------------------------
+#
+# Everything under `mcr/` and under `<lang>/flow_test/` is recorder OUTPUT, down
+# to the source snapshots the recorder copied alongside the trace (e.g.
+# `go/flow_test/files/nix/store/...-go-1.25.5/share/go/src/fmt/print.go`, which is
+# upstream Go, vendored by the recorder rather than written here). A formatter
+# that edits any of it destroys the one property that lets a committed recording
+# serve as evidence: that it is byte-for-byte what the recorder wrote. So those
+# trees are out of scope for every hook.
+#
+# `programs/` is NOT excluded. Those are the hand-written source programs the
+# recordings are made FROM, so they are ordinary source and are gated normally,
+# as are `README.md`, `FIXTURE_IDS.md`, `.github/workflows/*.yml` and the
+# dotfiles. Measured at `3ee49c9`: 515 tracked files, 495 excluded, **20 in
+# scope** — so the hooks below have a non-empty population and are not passing
+# for free.
+#
+# CONSEQUENCE, STATED RATHER THAN LEFT TO BE DISCOVERED: because the exclude is
+# top-level, `check-added-large-files` does not see the recording trees either.
+# That is intended — 9 tracked recordings exceed the 1 MB ceiling (the largest,
+# `mcr/linux-x86_64/trace-portable.ct`, is 90.48 MiB) and §4.3 grants this repo
+# the recording exception, so a size gate over them could only be noise. It does
+# mean a non-recording blob added under `mcr/` is unchecked; the size gate is
+# load-bearing for `programs/` and the repo root, which is where source lands.
+
+minimum_pre_commit_version: "3.0.0"
+
+exclude: |
+  (?x)^(
+    mcr/
+    |(c|go|javascript|nim|python|ruby|rust)/flow_test/
+  )
+
+repos:
+  # --- The committed-binaries tier, per mcl-standard-hooks. -----------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      # 1024 KB passed explicitly because UPSTREAM'S DEFAULT IS 500 KB. Dropping
+      # the argument silently halves the ceiling.
+      #
+      # Acts on files a commit ADDS (`git diff --staged --diff-filter=A`), never
+      # on files already tracked, so adopting it here does not retroactively
+      # fail the 9 oversized recordings already committed — and re-recording one
+      # is a modification, not an addition. `--enforce-all` is deliberately not
+      # passed and must not be added to "tighten" it.
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: end-of-file-fixer
+
+  # `ban-added-ct-recordings` is deliberately absent — see the header.
+
+  # --- Formatting and style. `language: system`, so the tool comes from the
+  # --- dev env rather than from a hook environment this file would pin per OS.
+  # --- Membership must match git-hooks/mcl-standard-hooks.yaml.
+  - repo: local
+    hooks:
+      - id: editorconfig-checker
+        name: editorconfig-checker
+        entry: editorconfig-checker
+        language: system
+        types: [file]
+
+      - id: nixfmt
+        name: nixfmt
+        entry: nixfmt
+        language: system
+        files: \.nix$
+
+      - id: terraform-format
+        name: terraform-format
+        description: Format Terraform/OpenTofu HCL files
+        entry: tofu fmt
+        language: system
+        types: [file]
+        files: \.(tf|tftest\.hcl)$
+
+      - id: prettier
+        name: prettier
+        entry: prettier --check --list-different=false --log-level=warn --ignore-unknown --write
+        language: system
+        types: [text]

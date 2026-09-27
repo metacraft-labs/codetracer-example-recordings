@@ -39,16 +39,16 @@ monthly `schedule` cron that is commented out — enable it per platform if
 unattended refresh is wanted (except `android-arm64`, which is physically
 device-bound and intentionally manual-only).
 
-| Workflow file | Fixture(s) | Runner it needs | Regen script |
-|---|---|---|---|
-| `regen-mcr-linux-x86_64.yml` | `mcr/linux-x86_64` | `[self-hosted, nixos]` | `mcr/linux-x86_64/regenerate.sh` |
-| `regen-mcr-linux-arm64.yml` | `mcr/linux-arm64` | `[self-hosted, nixos, aarch64-linux]` | `mcr/linux-arm64/regenerate.sh` |
-| `regen-mcr-windows-x86_64.yml` | `mcr/windows-x86_64` | `[self-hosted, windows]` (VS Build Tools) | `mcr/windows-x86_64/regenerate.ps1` |
-| `regen-mcr-macos-arm64.yml` (job `platform`) | `mcr/macos-arm64` | `[self-hosted, macos]` (Apple Silicon) | `mcr/macos-arm64/regenerate.sh` |
-| `regen-mcr-macos-arm64.yml` (job `emulator`) | `mcr/macos-arm64/emulator` (minus `eme5`) | `[self-hosted, macos, sip-off]` | `mcr/macos-arm64/emulator/regenerate.sh` |
-| `regen-mcr-ios-arm64.yml` | `mcr/ios-arm64` | `[self-hosted, macos]` with Xcode + iOS simulator | `mcr/ios-arm64/regenerate.sh` |
-| `regen-mcr-android-arm64.yml` | `mcr/android-arm64` | `[self-hosted, android]` with adb device/AVD + NDK | `mcr/android-arm64/regenerate.sh` |
-| `regen-rr-language-recordings.yml` | `rust/`, `c/`, `go/`, `nim/` `flow_test/` | `[self-hosted, nixos, x86-64-v2, bare-metal]` (rr needs PMU) | `<lang>/flow_test/regenerate.sh` (matrix) |
+| Workflow file                                | Fixture(s)                                | Runner it needs                                              | Regen script                              |
+| -------------------------------------------- | ----------------------------------------- | ------------------------------------------------------------ | ----------------------------------------- |
+| `regen-mcr-linux-x86_64.yml`                 | `mcr/linux-x86_64`                        | `[self-hosted, nixos]`                                       | `mcr/linux-x86_64/regenerate.sh`          |
+| `regen-mcr-linux-arm64.yml`                  | `mcr/linux-arm64`                         | `[self-hosted, nixos, aarch64-linux]`                        | `mcr/linux-arm64/regenerate.sh`           |
+| `regen-mcr-windows-x86_64.yml`               | `mcr/windows-x86_64`                      | `[self-hosted, windows]` (VS Build Tools)                    | `mcr/windows-x86_64/regenerate.ps1`       |
+| `regen-mcr-macos-arm64.yml` (job `platform`) | `mcr/macos-arm64`                         | `[self-hosted, macos]` (Apple Silicon)                       | `mcr/macos-arm64/regenerate.sh`           |
+| `regen-mcr-macos-arm64.yml` (job `emulator`) | `mcr/macos-arm64/emulator` (minus `eme5`) | `[self-hosted, macos, sip-off]`                              | `mcr/macos-arm64/emulator/regenerate.sh`  |
+| `regen-mcr-ios-arm64.yml`                    | `mcr/ios-arm64`                           | `[self-hosted, macos]` with Xcode + iOS simulator            | `mcr/ios-arm64/regenerate.sh`             |
+| `regen-mcr-android-arm64.yml`                | `mcr/android-arm64`                       | `[self-hosted, android]` with adb device/AVD + NDK           | `mcr/android-arm64/regenerate.sh`         |
+| `regen-rr-language-recordings.yml`           | `rust/`, `c/`, `go/`, `nim/` `flow_test/` | `[self-hosted, nixos, x86-64-v2, bare-metal]` (rr needs PMU) | `<lang>/flow_test/regenerate.sh` (matrix) |
 
 ## How each job works
 
@@ -69,6 +69,7 @@ device-bound and intentionally manual-only).
    schema v3 — the schema current readers refuse. A regen with the old
    default would have rewritten the fixture and left it exactly as
    unreadable, from a workflow that reported success.
+
 4. Sets up Nix (Linux/macOS/Android) or the codetracer `windows-diy` env
    (Windows), then runs the platform's regenerate script exactly as
    documented in the repo README
@@ -86,13 +87,13 @@ the workflows do not weaken it — they only invoke the scripts unchanged.
 
 ## Caveats
 
-- **android-arm64** — hardest platform. It needs a *real* adb-reachable
+- **android-arm64** — hardest platform. It needs a _real_ adb-reachable
   arm64 target: a physical phone on a self-hosted runner, or an arm64
   emulator on an arm64 host. Hosted GitHub runners have no phone, and
   `reactivecircus/android-emulator-runner` on the hosted Linux images only
   offers x86/x86_64 system images (wrong architecture for this fixture).
   The job fails fast if no authorised device is visible to adb.
-- **ios-arm64** — records against the iOS *simulator* (arm64-apple-ios-
+- **ios-arm64** — records against the iOS _simulator_ (arm64-apple-ios-
   simulator), so it needs a macOS runner with Xcode + the iOS simulator
   SDK. The job fails fast if `xcrun simctl` is unavailable.
 - **windows-x86_64** — the sibling repos' existing "Windows Tests" workflow

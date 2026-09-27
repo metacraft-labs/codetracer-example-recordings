@@ -8,26 +8,26 @@ was produced by a real CodeTracer recorder over a real program.
 
 ## Recordings
 
-| Language | Directory | Recorder | Trace Format |
-|----------|-----------|----------|--------------|
-| Rust | `rust/flow_test/` | `ct-rr-support` (RR) | RR trace + metadata |
-| C | `c/flow_test/` | `ct-rr-support` (RR) | RR trace + metadata |
-| Go | `go/flow_test/` | `ct-rr-support` (RR) | RR trace + metadata |
-| Nim | `nim/flow_test/` | `ct-rr-support` (RR) | RR trace + metadata |
-| Python | `python/flow_test/` | `codetracer-python-recorder` | CBOR+zstd binary |
-| Ruby | `ruby/flow_test/` | `codetracer-ruby-recorder` (native) | CTFS container |
-| JavaScript | `javascript/flow_test/` | `codetracer-js-recorder` | CTFS container |
+| Language   | Directory               | Recorder                            | Trace Format        |
+| ---------- | ----------------------- | ----------------------------------- | ------------------- |
+| Rust       | `rust/flow_test/`       | `ct-rr-support` (RR)                | RR trace + metadata |
+| C          | `c/flow_test/`          | `ct-rr-support` (RR)                | RR trace + metadata |
+| Go         | `go/flow_test/`         | `ct-rr-support` (RR)                | RR trace + metadata |
+| Nim        | `nim/flow_test/`        | `ct-rr-support` (RR)                | RR trace + metadata |
+| Python     | `python/flow_test/`     | `codetracer-python-recorder`        | CBOR+zstd binary    |
+| Ruby       | `ruby/flow_test/`       | `codetracer-ruby-recorder` (native) | CTFS container      |
+| JavaScript | `javascript/flow_test/` | `codetracer-js-recorder`            | CTFS container      |
 
 ### MCR Recordings
 
-| Platform | Directory | Device | Format |
-|----------|-----------|--------|--------|
-| macOS ARM64 | `mcr/macos-arm64/` | Apple Silicon Mac (M1) | `.ct` (CTFS) |
-| Linux x86_64 | `mcr/linux-x86_64/` | Linux AMD64 (ct-mcr interpose) | `.ct` (CTFS) |
-| Android ARM64 | `mcr/android-arm64/` | Samsung Galaxy S24 Ultra | `.ct` (CTFS) |
-| iOS ARM64 | `mcr/ios-arm64/` | iPhone 17 Pro simulator | `.ct` (CTFS) |
+| Platform       | Directory             | Device                            | Format       |
+| -------------- | --------------------- | --------------------------------- | ------------ |
+| macOS ARM64    | `mcr/macos-arm64/`    | Apple Silicon Mac (M1)            | `.ct` (CTFS) |
+| Linux x86_64   | `mcr/linux-x86_64/`   | Linux AMD64 (ct-mcr interpose)    | `.ct` (CTFS) |
+| Android ARM64  | `mcr/android-arm64/`  | Samsung Galaxy S24 Ultra          | `.ct` (CTFS) |
+| iOS ARM64      | `mcr/ios-arm64/`      | iPhone 17 Pro simulator           | `.ct` (CTFS) |
 | Windows x86_64 | `mcr/windows-x86_64/` | Windows 11 x64 (ct-mcr interpose) | `.ct` (CTFS) |
-| Linux ARM64 | `mcr/linux-arm64/` | Linux ARM64 (ct-mcr interpose) | `.ct` (CTFS) |
+| Linux ARM64    | `mcr/linux-arm64/`    | Linux ARM64 (ct-mcr interpose)    | `.ct` (CTFS) |
 
 ### MCR emulator fixtures
 
@@ -38,13 +38,13 @@ replay** and **lockstep-diff** suites in `codetracer-native-recorder` — the
 suites that pin how far the emulator gets through a real macOS bring-up and
 where it honestly stops.
 
-| Directory | Victim | Recorded via |
-|-----------|--------|--------------|
-| `emulator/eme5/` | `null_main`, `one_puts` | `ct_cli record` (interpose) |
-| `emulator/eme5_inject/` | `one_write` | injected record (`--experimental-no-sip-mode`) |
-| `emulator/eme5_predyld/` | `one_write` | injected record + in-child pre-dyld installer |
-| `emulator/eme_ete_2006/` | `one_write` | injected record + M9c + Apple ETE (archival) |
-| `emulator/eme_m9c_2006/` | `one_write` | injected record + M9c whole-program svc capture |
+| Directory                | Victim                  | Recorded via                                    |
+| ------------------------ | ----------------------- | ----------------------------------------------- |
+| `emulator/eme5/`         | `null_main`, `one_puts` | `ct_cli record` (interpose)                     |
+| `emulator/eme5_inject/`  | `one_write`             | injected record (`--experimental-no-sip-mode`)  |
+| `emulator/eme5_predyld/` | `one_write`             | injected record + in-child pre-dyld installer   |
+| `emulator/eme_ete_2006/` | `one_write`             | injected record + M9c + Apple ETE (archival)    |
+| `emulator/eme_m9c_2006/` | `one_write`             | injected record + M9c whole-program svc capture |
 
 These are device-bound: an Apple Silicon Mac with SIP disabled, an entitled
 recorder, and a quiet host. See
@@ -79,16 +79,17 @@ implementation.
 Each platform recording needs a `regenerate.sh` (or `.ps1` on Windows)
 that produces both `trace.ct` and `trace-portable.ct`. Status:
 
-| Platform | `regenerate.sh` | `trace.ct` | `trace-portable.ct` | Notes |
-|----------|----------------|------------|---------------------|-------|
-| linux-x86_64 | done | done | done | Reference implementation |
-| macos-arm64 | done | done (synthetic) | done | — |
-| windows-x86_64 | done (.ps1) | done | done | — |
-| android-arm64 | done | done | done | — |
-| ios-arm64 | done | done | done | — |
-| linux-arm64 | done | TODO | TODO | Script + CI workflow ready; traces pending first run on an ARM64 Linux host |
+| Platform       | `regenerate.sh` | `trace.ct`       | `trace-portable.ct` | Notes                                                                       |
+| -------------- | --------------- | ---------------- | ------------------- | --------------------------------------------------------------------------- |
+| linux-x86_64   | done            | done             | done                | Reference implementation                                                    |
+| macos-arm64    | done            | done (synthetic) | done                | —                                                                           |
+| windows-x86_64 | done (.ps1)     | done             | done                | —                                                                           |
+| android-arm64  | done            | done             | done                | —                                                                           |
+| ios-arm64      | done            | done             | done                | —                                                                           |
+| linux-arm64    | done            | TODO             | TODO                | Script + CI workflow ready; traces pending first run on an ARM64 Linux host |
 
 To regenerate a platform (example for Linux x86_64):
+
 ```bash
 direnv exec ../codetracer bash mcr/linux-x86_64/regenerate.sh
 ```
@@ -98,6 +99,7 @@ direnv exec ../codetracer bash mcr/linux-x86_64/regenerate.sh
 All platform `regenerate.sh` scripts should produce both `trace.ct` (raw)
 and `trace-portable.ct` (enriched via `ct-mcr export --portable`).
 See `mcr/linux-x86_64/regenerate.sh` for the reference implementation.
+
 ## Standard Recordings
 
 All standard test programs compute the same values: `calculate_sum(10, 32)` = 483,
@@ -229,6 +231,7 @@ For Linux ARM64 (must be run on an ARM64 host):
 ```bash
 direnv exec ../codetracer bash mcr/linux-arm64/regenerate.sh
 ```
+
 For Windows x86_64:
 
 ```powershell
