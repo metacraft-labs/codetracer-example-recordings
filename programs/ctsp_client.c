@@ -1,29 +1,29 @@
 /*
- * android_ctsp_client.c — Minimal CTSP client for Android phone-to-desktop
- * integration testing.
- *
- * This is a pure C program (no Nim dependency) that speaks the CTSP wire
- * protocol directly.  It connects to a stream-receiver over TCP, sends
- * metadata + event batches + end-recording, then prints "DONE".
- *
- * Usage: android_ctsp_client <host> <port>
- *   host  — IP or hostname of the stream-receiver (usually 127.0.0.1 when
- *           using adb reverse)
- *   port  — TCP port (e.g. 14290)
- *
- * CTSP wire format (from ctsp.nim):
- *   [0:1]  messageType  uint16 LE
- *   [2:3]  flags        uint16 LE
- *   [4:7]  payloadLen   uint32 LE
- *   [8..]  payload      (payloadLen bytes)
- *
- * Message types (client -> server):
- *   0x0001  EVENT_BATCH   flags = ctTid (low 16 bits)
- *   0x0002  CHECKPOINT
- *   0x0003  METADATA      payload = JSON string
- *   0x0004  END_RECORDING
- *   0x0005  HEARTBEAT
- */
+  * android_ctsp_client.c — Minimal CTSP client for Android phone-to-desktop
+  * integration testing.
+  *
+  * This is a pure C program (no Nim dependency) that speaks the CTSP wire
+  * protocol directly.  It connects to a stream-receiver over TCP, sends
+  * metadata + event batches + end-recording, then prints "DONE".
+  *
+  * Usage: android_ctsp_client <host> <port>
+  *   host  — IP or hostname of the stream-receiver (usually 127.0.0.1 when
+  *           using adb reverse)
+  *   port  — TCP port (e.g. 14290)
+  *
+  * CTSP wire format (from ctsp.nim):
+  *   [0:1]  messageType  uint16 LE
+  *   [2:3]  flags        uint16 LE
+  *   [4:7]  payloadLen   uint32 LE
+  *   [8..]  payload      (payloadLen bytes)
+  *
+  * Message types (client -> server):
+  *   0x0001  EVENT_BATCH   flags = ctTid (low 16 bits)
+  *   0x0002  CHECKPOINT
+  *   0x0003  METADATA      payload = JSON string
+  *   0x0004  END_RECORDING
+  *   0x0005  HEARTBEAT
+  */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -81,7 +81,7 @@ static int send_all(int fd, const uint8_t *buf, size_t len) {
 
 /* Build and send a CTSP message. */
 static int send_ctsp(int fd, uint16_t type, uint16_t flags,
-                     const uint8_t *payload, uint32_t payload_len) {
+                      const uint8_t *payload, uint32_t payload_len) {
     uint8_t hdr[8];
     write_u16_le(hdr + 0, type);
     write_u16_le(hdr + 2, flags);
@@ -99,14 +99,14 @@ static int send_ctsp(int fd, uint16_t type, uint16_t flags,
 /* -------------------------------------------------------------------------- */
 
 /*
- * Build a minimal event batch payload.  The stream receiver does not parse
- * individual events inside the batch — it just passes the raw bytes to
- * TraceWriter.writeEventData().  So any non-empty payload will be recorded
- * as event data in the trace.
- *
- * We build a plausible-looking blob: 16 bytes per "event" containing
- * a 4-byte event type + 4-byte tick + 8-byte payload stub.
- */
+  * Build a minimal event batch payload.  The stream receiver does not parse
+  * individual events inside the batch — it just passes the raw bytes to
+  * TraceWriter.writeEventData().  So any non-empty payload will be recorded
+  * as event data in the trace.
+  *
+  * We build a plausible-looking blob: 16 bytes per "event" containing
+  * a 4-byte event type + 4-byte tick + 8-byte payload stub.
+  */
 #define EVENTS_PER_BATCH 5
 #define EVENT_SIZE       16
 #define BATCH_SIZE       (EVENTS_PER_BATCH * EVENT_SIZE)
@@ -199,8 +199,8 @@ int main(int argc, char **argv) {
         }
     }
     printf("android_ctsp_client: sent %d EVENT_BATCH messages "
-           "(%d events total)\n",
-           NUM_BATCHES, NUM_BATCHES * EVENTS_PER_BATCH);
+            "(%d events total)\n",
+            NUM_BATCHES, NUM_BATCHES * EVENTS_PER_BATCH);
 
     /* --- Send END_RECORDING --- */
     if (send_ctsp(sock, CTSP_END_RECORDING, 0, NULL, 0) != 0) {

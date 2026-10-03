@@ -58,7 +58,7 @@ int read_null_device(int iterations) {
   for (int i = 0; i < iterations; i++) {
 #ifdef _WIN32
     HANDLE h = CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ,
-                           NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+                            NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (h != INVALID_HANDLE_VALUE) {
       char buf[64];
       DWORD n = 0;
@@ -103,7 +103,7 @@ DWORD WINAPI worker_thread(LPVOID arg) {
 
   // I/O events
   HANDLE h = CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ,
-                         NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+                          NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
   if (h != INVALID_HANDLE_VALUE) {
     char buf[16];
     DWORD n = 0;
