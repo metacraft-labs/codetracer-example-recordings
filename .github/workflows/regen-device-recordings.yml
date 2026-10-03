@@ -55,7 +55,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.platforms }}
   cancel-in-progress: false
 
 env:
@@ -399,16 +399,6 @@ jobs:
     defaults:
       run:
         shell: pwsh
-    env:
-      # Inputs to ../codetracer/env.ps1: provision only the Nim toolchain the
-      # recorder build needs (WINDOWS_DIY_ONLY is an allowlist).
-      WINDOWS_DIY_ONLY: "NIM"
-      NIM_WINDOWS_SOURCE_MODE: "prebuilt"
-      WINDOWS_DIY_SETUP_NODE_DEPS: "false"
-      WINDOWS_DIY_ENSURE_TTD: "false"
-      WINDOWS_DIY_SKIP_TTD_PROBE: "1"
-      WINDOWS_DIY_ENSURE_DOTNET: "false"
-      WINDOWS_DIY_ENSURE_TREE_SITTER_NIM_PARSER: "false"
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -440,7 +430,18 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "$What failed with exit code $LASTEXITCODE" }
           }
 
-          . ..\codetracer\env.ps1
+          # The Nim of the CodeTracer Windows DIY environment, at the version
+          # codetracer pins, where its ensure-nim.ps1 installs it.  env.ps1
+          # itself is not sourced: on these runners it aborts on an
+          # access-denied probe of a component (GCC) this build does not use.
+          $nimVersion = (Select-String -Path ..\codetracer\non-nix-build\windows\toolchain-versions.env `
+            -Pattern '^NIM_VERSION=(.+)$').Matches[0].Groups[1].Value.Trim()
+          $diyRoot = if ($env:WINDOWS_DIY_INSTALL_ROOT) { $env:WINDOWS_DIY_INSTALL_ROOT } else { "D:\metacraft-dev-deps" }
+          $nimBin = Join-Path $diyRoot "nim\$nimVersion\prebuilt\nim-$nimVersion\bin"
+          if (-not (Test-Path (Join-Path $nimBin "nim.exe"))) {
+            throw "Nim $nimVersion is not installed at $nimBin (the runner's Windows DIY environment)"
+          }
+          $env:PATH = "$nimBin;$env:PATH"
 
           $vsInstall = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" `
             -latest -products * -property installationPath -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64
