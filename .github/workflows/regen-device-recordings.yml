@@ -1,0 +1,436 @@
+# Regenerate the device-bound MCR recordings with the recorder codetracer pins.
+#
+# Each job records one platform's fixtures on a runner of that platform, with
+# `ct-mcr` built from the codetracer-native-recorder revision named by
+# codetracer's committed repro.lock (at the `codetracer_ref` input), and the
+# recorder's siblings at the revisions the locks name
+# (`.github/scripts/provision-recorder.sh`).  It then checks every produced
+# `.ct` is container v5 / meta.dat v6 and opens with `ct-print` built from the
+# pinned codetracer-trace-format-nim (`.github/scripts/verify-recordings.sh`),
+# and uploads the recordings, the pins and the logs as an artifact.
+#
+# Nothing is committed or pushed from here.  Whoever dispatched the run
+# downloads the artifact, re-verifies it, and commits it.
+#
+#   job                    fixtures                                     needs
+#   macos-arm64            mcr/macos-arm64/{trace,trace-portable}.ct     Apple Silicon Mac
+#   macos-arm64-emulator   mcr/macos-arm64/emulator/{eme5_inject,       Apple Silicon Mac with SIP
+#                          eme5_predyld,eme_m9c_2006}/one_write.ct      disabled; skipped otherwise
+#   ios-arm64              mcr/ios-arm64/{trace,trace-portable}.ct       Mac with Xcode + an iOS
+#                                                                       simulator; skipped otherwise
+#   windows-x86_64         mcr/windows-x86_64/{trace,trace-portable}.ct  Windows x64 + VS Build Tools
+#
+# Not covered: `mcr/android-arm64` needs a USB-connected phone
+# (`regen-mcr-android-arm64.yml` / its regenerate.sh), and
+# `mcr/macos-arm64/emulator/eme5` has no re-record driver (see
+# mcr/macos-arm64/emulator/regenerate.sh).
+#
+# The jobs skip themselves, with a notice, when the runner lacks a
+# precondition they can check in seconds (SIP, Xcode), before building
+# anything, so they do not hold a scarce runner for a recording they cannot
+# make.
+
+name: "Regenerate device recordings"
+
+on:
+  workflow_dispatch:
+    inputs:
+      codetracer_ref:
+        description: "codetracer branch, tag or SHA whose repro.lock pins the recorder"
+        required: false
+        default: "agents"
+      platforms:
+        description: "Which platform job(s) to run"
+        required: false
+        type: choice
+        default: all
+        options:
+          - all
+          - macos-arm64
+          - macos-arm64-emulator
+          - ios-arm64
+          - windows-x86_64
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CODETRACER_REF: ${{ inputs.codetracer_ref || 'agents' }}
+  # The recordings are made by a locally built recorder with no licensing
+  # library beside it; this makes ct-mcr's licence layer answer permissively
+  # instead of refusing to record (ct_cli/src/ct_cli/licensing_ffi.nim).
+  CT_LICENSE_DEV_NO_FFI: "1"
+
+jobs:
+  macos-arm64:
+    if: inputs.platforms == 'all' || inputs.platforms == 'macos-arm64'
+    # Only the exact value `github-hosted` selects a hosted image.
+    runs-on: ${{ vars.CI_RUNNER_MODE == 'github-hosted' && 'macos-15' || fromJSON('["self-hosted","macos","arm64"]') }}
+    # Measured: the recorder builds in ~4 min on a warm store; the rest is the
+    # dev shell realisation on a cold one.
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Nix
+        uses: metacraft-labs/metacraft-github-actions/setup-nix@dev
+        with:
+          gh-token: ${{ github.token }}
+          substituters: ${{ vars.ATTIC_SUBSTITUTER }}
+          trusted-public-keys: ${{ vars.ATTIC_TRUSTED_PUBLIC_KEY }}
+
+      - name: Provision the pinned recorder and its siblings
+        run: |
+          mkdir -p regen-logs
+          bash .github/scripts/provision-recorder.sh "$CODETRACER_REF" .. 2>&1 | tee regen-logs/provision.log
+          cp ../recorder-pins.txt regen-logs/
+
+      - name: Build ct-mcr and ct-print
+        run: |
+          set -o pipefail
+          {
+            nix develop ../codetracer-native-recorder --command bash -c '
+              set -euo pipefail
+              cd ct_cli
+              nimble build
+              codesign -s - -f --entitlements record-entitlements.plist ct_cli'
+            nix develop ../codetracer-trace-format-nim --command bash -c '
+              set -euo pipefail
+              nimble buildCtPrint'
+          } 2>&1 | tee regen-logs/build.log
+
+      - name: Regenerate mcr/macos-arm64
+        run: |
+          set -o pipefail
+          nix develop ../codetracer-native-recorder --command \
+            env CODETRACER="$PWD/../codetracer-native-recorder" \
+            bash mcr/macos-arm64/regenerate.sh 2>&1 | tee regen-logs/regenerate.log
+
+      - name: Verify container version and ct-print
+        run: |
+          set -o pipefail
+          bash .github/scripts/verify-recordings.sh ../codetracer-trace-format-nim/ct-print \
+            mcr/macos-arm64/trace.ct mcr/macos-arm64/trace-portable.ct 2>&1 | tee regen-logs/verify.log
+
+      - name: Upload recordings and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regen-macos-arm64
+          path: |
+            mcr/macos-arm64/trace.ct
+            mcr/macos-arm64/trace-portable.ct
+            mcr/macos-arm64/binaries/
+            regen-logs/
+          if-no-files-found: warn
+          retention-days: 3
+
+      - name: Mirror to S3 (non-blocking)
+        if: always()
+        continue-on-error: true
+        uses: metacraft-labs/metacraft-github-actions/mirror-artifacts-s3@dev
+        with:
+          path: regen-logs/
+          prefix: regen-macos-arm64/${{ github.run_id }}
+          endpoint: ${{ vars.MCL_S3_ARTIFACTS_ENDPOINT }}
+          bucket: ${{ vars.MCL_S3_ARTIFACTS_BUCKET }}
+          region: ${{ vars.MCL_S3_ARTIFACTS_REGION }}
+          access-key-id: ${{ secrets.MCL_S3_ARTIFACTS_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.MCL_S3_ARTIFACTS_SECRET_ACCESS_KEY }}
+
+  macos-arm64-emulator:
+    if: inputs.platforms == 'all' || inputs.platforms == 'macos-arm64-emulator'
+    runs-on: ${{ vars.CI_RUNNER_MODE == 'github-hosted' && 'macos-15' || fromJSON('["self-hosted","macos","arm64"]') }}
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check that SIP is disabled
+        id: pre
+        # The injected record path these fixtures come from needs SIP off.
+        # No runner label states SIP, so ask the host, and skip rather than
+        # fail when it says enabled: that is a property of the runner, not a
+        # defect in the run.
+        run: |
+          status="$(csrutil status 2>&1 || true)"
+          echo "$status"
+          if printf '%s' "$status" | grep -qi disabled; then
+            echo "ok=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "::notice title=macos-arm64-emulator skipped::SIP is enabled on $RUNNER_NAME ($status). The emulator fixtures need an Apple Silicon Mac with SIP disabled."
+            echo "ok=false" >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        if: steps.pre.outputs.ok == 'true'
+        uses: actions/checkout@v5
+
+      - name: Set up Nix
+        if: steps.pre.outputs.ok == 'true'
+        uses: metacraft-labs/metacraft-github-actions/setup-nix@dev
+        with:
+          gh-token: ${{ github.token }}
+          substituters: ${{ vars.ATTIC_SUBSTITUTER }}
+          trusted-public-keys: ${{ vars.ATTIC_TRUSTED_PUBLIC_KEY }}
+
+      - name: Provision the pinned recorder and its siblings
+        if: steps.pre.outputs.ok == 'true'
+        run: |
+          mkdir -p regen-logs
+          bash .github/scripts/provision-recorder.sh "$CODETRACER_REF" .. 2>&1 | tee regen-logs/provision.log
+          cp ../recorder-pins.txt regen-logs/
+
+      - name: Build ct-print
+        if: steps.pre.outputs.ok == 'true'
+        run: |
+          set -o pipefail
+          nix develop ../codetracer-trace-format-nim --command nimble buildCtPrint 2>&1 | tee regen-logs/build.log
+
+      - name: Regenerate mcr/macos-arm64/emulator
+        if: steps.pre.outputs.ok == 'true'
+        # The script runs each driver through `repro exec <recorder> -- nim c -r`;
+        # the shim maps that onto the recorder's flake dev shell.
+        run: |
+          set -o pipefail
+          export PATH="$PWD/.github/scripts/repro-shim:$PATH"
+          bash mcr/macos-arm64/emulator/regenerate.sh 2>&1 | tee regen-logs/regenerate.log
+
+      - name: Verify container version and ct-print
+        if: steps.pre.outputs.ok == 'true'
+        run: |
+          set -o pipefail
+          bash .github/scripts/verify-recordings.sh ../codetracer-trace-format-nim/ct-print \
+            mcr/macos-arm64/emulator/eme5_inject/one_write.ct \
+            mcr/macos-arm64/emulator/eme5_predyld/one_write.ct \
+            mcr/macos-arm64/emulator/eme_m9c_2006/one_write.ct 2>&1 | tee regen-logs/verify.log
+
+      - name: Upload recordings and logs
+        if: always() && steps.pre.outputs.ok == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: regen-macos-arm64-emulator
+          path: |
+            mcr/macos-arm64/emulator/
+            regen-logs/
+          if-no-files-found: warn
+          retention-days: 3
+
+  ios-arm64:
+    if: inputs.platforms == 'all' || inputs.platforms == 'ios-arm64'
+    runs-on: ${{ vars.CI_RUNNER_MODE == 'github-hosted' && 'macos-15' || fromJSON('["self-hosted","macos","arm64"]') }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check for Xcode and an iOS simulator
+        id: pre
+        # The fixture is a CTSP recording of a program running in the iOS
+        # simulator, so it needs a full Xcode (not just the command-line
+        # tools) with the iOS simulator SDK and a simulator runtime.  No runner
+        # label states that, so ask the host, and skip rather than fail when
+        # it is missing.
+        run: |
+          ok=true
+          echo "xcode-select -p: $(xcode-select -p 2>&1 || true)"
+          if ! sdk="$(xcrun --sdk iphonesimulator --show-sdk-path 2>&1)"; then
+            echo "no iphonesimulator SDK: $sdk"
+            ok=false
+          else
+            echo "iphonesimulator SDK: $sdk"
+          fi
+          if ! runtimes="$(xcrun simctl list runtimes 2>&1)" || ! printf '%s' "$runtimes" | grep -q '^iOS'; then
+            echo "no iOS simulator runtime: $runtimes"
+            ok=false
+          else
+            printf '%s\n' "$runtimes"
+          fi
+          if ! $ok; then
+            echo "::notice title=ios-arm64 skipped::$RUNNER_NAME has no Xcode with the iOS simulator SDK and an iOS simulator runtime."
+          fi
+          echo "ok=$ok" >>"$GITHUB_OUTPUT"
+
+      - name: Checkout
+        if: steps.pre.outputs.ok == 'true'
+        uses: actions/checkout@v5
+
+      - name: Set up Nix
+        if: steps.pre.outputs.ok == 'true'
+        uses: metacraft-labs/metacraft-github-actions/setup-nix@dev
+        with:
+          gh-token: ${{ github.token }}
+          substituters: ${{ vars.ATTIC_SUBSTITUTER }}
+          trusted-public-keys: ${{ vars.ATTIC_TRUSTED_PUBLIC_KEY }}
+
+      - name: Provision the pinned recorder and its siblings
+        if: steps.pre.outputs.ok == 'true'
+        run: |
+          mkdir -p regen-logs
+          bash .github/scripts/provision-recorder.sh "$CODETRACER_REF" .. 2>&1 | tee regen-logs/provision.log
+          cp ../recorder-pins.txt regen-logs/
+
+      - name: Build ct-mcr and ct-print
+        if: steps.pre.outputs.ok == 'true'
+        run: |
+          set -o pipefail
+          {
+            nix develop ../codetracer-native-recorder --command bash -c '
+              set -euo pipefail
+              cd ct_cli
+              nimble build
+              codesign -s - -f --entitlements record-entitlements.plist ct_cli'
+            nix develop ../codetracer-trace-format-nim --command bash -c '
+              set -euo pipefail
+              nimble buildCtPrint'
+          } 2>&1 | tee regen-logs/build.log
+
+      - name: Regenerate mcr/ios-arm64
+        if: steps.pre.outputs.ok == 'true'
+        # Outside the Nix shell on purpose: the script compiles with Xcode's
+        # clang through `xcrun`, which inside the dev shell would resolve to
+        # the Nix SDK.  The one Nim build it does goes through
+        # `repro exec <recorder>`, which the shim maps onto the recorder's
+        # dev shell.
+        run: |
+          set -o pipefail
+          export PATH="$PWD/.github/scripts/repro-shim:$PATH"
+          CODETRACER="$PWD/../codetracer-native-recorder" \
+            bash mcr/ios-arm64/regenerate.sh 2>&1 | tee regen-logs/regenerate.log
+
+      - name: Verify container version and ct-print
+        if: steps.pre.outputs.ok == 'true'
+        run: |
+          set -o pipefail
+          bash .github/scripts/verify-recordings.sh ../codetracer-trace-format-nim/ct-print \
+            mcr/ios-arm64/trace.ct mcr/ios-arm64/trace-portable.ct 2>&1 | tee regen-logs/verify.log
+
+      - name: Upload recordings and logs
+        if: always() && steps.pre.outputs.ok == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: regen-ios-arm64
+          path: |
+            mcr/ios-arm64/trace.ct
+            mcr/ios-arm64/trace-portable.ct
+            mcr/ios-arm64/binaries/
+            regen-logs/
+          if-no-files-found: warn
+          retention-days: 3
+
+  windows-x86_64:
+    if: inputs.platforms == 'all' || inputs.platforms == 'windows-x86_64'
+    # `dev-env-ready`: the job needs the CodeTracer Windows DIY environment and
+    # Visual Studio Build Tools (cl, ml64), which only the runners carrying
+    # this label provide.
+    runs-on: ${{ vars.CI_RUNNER_MODE == 'github-hosted' && 'windows-latest' || fromJSON('["self-hosted","windows","x64","dev-env-ready"]') }}
+    timeout-minutes: 75
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      # Inputs to ../codetracer/env.ps1: provision only the Nim toolchain the
+      # recorder build needs (WINDOWS_DIY_ONLY is an allowlist).
+      WINDOWS_DIY_ONLY: "NIM"
+      NIM_WINDOWS_SOURCE_MODE: "prebuilt"
+      WINDOWS_DIY_SETUP_NODE_DEPS: "false"
+      WINDOWS_DIY_ENSURE_TTD: "false"
+      WINDOWS_DIY_SKIP_TTD_PROBE: "1"
+      WINDOWS_DIY_ENSURE_DOTNET: "false"
+      WINDOWS_DIY_ENSURE_TREE_SITTER_NIM_PARSER: "false"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Provision codetracer, the pinned recorder and its siblings
+        shell: bash
+        run: |
+          mkdir -p regen-logs
+          bash .github/scripts/provision-recorder.sh "$CODETRACER_REF" .. --with-codetracer 2>&1 | tee regen-logs/provision.log
+          cp ../recorder-pins.txt regen-logs/
+
+      - name: Build ct-mcr and ct-print
+        run: |
+          $ErrorActionPreference = "Stop"
+          Start-Transcript -Path regen-logs/build.log
+          function Invoke-Native([string]$What, [scriptblock]$Block) {
+            & $Block
+            if ($LASTEXITCODE -ne 0) { throw "$What failed with exit code $LASTEXITCODE" }
+          }
+
+          . ..\codetracer\env.ps1
+
+          $vsInstall = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" `
+            -latest -products * -property installationPath -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64
+          Import-Module (Join-Path $vsInstall "Common7\Tools\Microsoft.VisualStudio.DevShell.dll")
+          Enter-VsDevShell -VsInstallPath $vsInstall -DevCmdArguments '-arch=x64' -SkipAutomaticLocation
+          Get-Command nim, nimble, cl, ml64 | Format-Table Name, Source -AutoSize
+
+          # The MSVC build of the zstd bindings links C:\zstd\lib\zstd.lib
+          # (codetracer-trace-format-nim src/codetracer_ctfs/zstd_bindings.nim).
+          if (-not (Test-Path C:\zstd\lib\zstd.lib)) {
+            $vcpkg = (Get-Command vcpkg -ErrorAction SilentlyContinue).Source
+            if (-not $vcpkg) { throw "C:\zstd\lib\zstd.lib is missing and vcpkg is not on PATH to build it" }
+            $manifest = Join-Path $env:RUNNER_TEMP "zstd-vcpkg"
+            New-Item -ItemType Directory -Force -Path $manifest | Out-Null
+            '{"dependencies":["zstd"],"builtin-baseline":"cf9b6f1a47898a888f9e86e346a9adfa68357380"}' |
+              Set-Content -Encoding ascii (Join-Path $manifest "vcpkg.json")
+            Push-Location $manifest
+            Invoke-Native "vcpkg install" { & $vcpkg install --triplet x64-windows-static }
+            Pop-Location
+            $inst = Join-Path $manifest "vcpkg_installed\x64-windows-static"
+            New-Item -ItemType Directory -Force -Path C:\zstd\include, C:\zstd\lib | Out-Null
+            Copy-Item (Join-Path $inst "include\zstd*.h"), (Join-Path $inst "include\zdict.h") C:\zstd\include\
+            Copy-Item (Join-Path $inst "lib\zstd.lib") C:\zstd\lib\zstd.lib
+          }
+
+          Invoke-Native "nimble install" { nimble install results stew -y }
+
+          Push-Location ..\codetracer-native-recorder
+          Invoke-Native "ct_mcr.exe build" { nim c --cc:vcc -d:release -o:ct_cli/ct_mcr.exe ct_cli/src/ct_cli.nim }
+          Invoke-Native "ct_interpose.dll build" {
+            nim c --app:lib --cc:vcc --mm:none --stackTrace:off --lineTrace:off -d:release `
+              -o:ct_interpose/ct_interpose.dll ct_interpose/src/ct_interpose/library_init_windows.nim
+          }
+          Copy-Item ct_interpose\ct_interpose.dll ct_cli\ct_interpose.dll
+          Pop-Location
+
+          Push-Location ..\codetracer-trace-format-nim
+          Invoke-Native "ct-print build" { nim c --cc:vcc -d:release --mm:arc -p:src -o:ct-print.exe src/codetracer_ct_print.nim }
+          Pop-Location
+          Stop-Transcript
+
+      - name: Regenerate mcr/windows-x86_64
+        run: |
+          $ErrorActionPreference = "Stop"
+          Start-Transcript -Path regen-logs/regenerate.log
+          .\mcr\windows-x86_64\regenerate.ps1
+          Stop-Transcript
+
+      - name: Verify container version and ct-print
+        shell: bash
+        run: |
+          set -o pipefail
+          bash .github/scripts/verify-recordings.sh ../codetracer-trace-format-nim/ct-print.exe \
+            mcr/windows-x86_64/trace.ct mcr/windows-x86_64/trace-portable.ct 2>&1 | tee regen-logs/verify.log
+
+      - name: Upload recordings and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regen-windows-x86_64
+          path: |
+            mcr/windows-x86_64/trace.ct
+            mcr/windows-x86_64/trace-portable.ct
+            mcr/windows-x86_64/binaries/
+            regen-logs/
+          if-no-files-found: warn
+          retention-days: 3

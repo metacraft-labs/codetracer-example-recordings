@@ -34,6 +34,31 @@ fails loudly saying which file to write
 (`ct_cli/tests/record_macos_eme5.nim`). `eme_ete_2006` is archival — its
 scratch driver no longer exists in any tree.
 
+## `regen-device-recordings.yml` — the macOS, iOS and Windows fixtures
+
+`regen-device-recordings.yml` records `mcr/macos-arm64` (platform and
+emulator), `mcr/ios-arm64` and `mcr/windows-x86_64` with the recorder
+**codetracer pins**: the `codetracer-native-recorder` revision in codetracer's
+committed `repro.lock` at the `codetracer_ref` input (default `agents`), with
+its siblings at the revisions the locks name
+(`.github/scripts/provision-recorder.sh`). Each job checks what it produced is
+container v5 / `meta.dat` v6 and opens with `ct-print` from the pinned
+`codetracer-trace-format-nim` (`.github/scripts/verify-recordings.sh`), and
+uploads the recordings, the pins and the logs as an artifact. It commits
+nothing and opens no pull request: the person who dispatched it downloads the
+artifact, re-verifies it and commits it.
+
+The emulator job and the iOS job check their precondition first (SIP
+disabled; Xcode with an iOS simulator) and skip with a notice when the runner
+lacks it, before building anything.
+
+Run it from a shell:
+
+```bash
+gh workflow run regen-device-recordings.yml --ref agents \
+  -f codetracer_ref=agents -f platforms=all
+```
+
 All workflows are **`workflow_dispatch`** (manual). Each has an optional
 monthly `schedule` cron that is commented out — enable it per platform if
 unattended refresh is wanted (except `android-arm64`, which is physically

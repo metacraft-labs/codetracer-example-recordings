@@ -5,6 +5,9 @@
 #   2. trace-portable.ct — enriched portable trace with binaries,
 #      debug symbols, and source files (for GUI E2E tests)
 #
+# Native commands (cl, ct-mcr) are checked by exit code: PowerShell's
+# $ErrorActionPreference does not stop on a failing executable.
+#
 # Prerequisites:
 #   - Windows x86_64 host
 #   - Visual Studio Build Tools (provides cl.exe)
@@ -30,6 +33,13 @@ $Binary   = Join-Path $ScriptDir "binaries\ct_fixture_prog.exe"
 $Trace    = Join-Path $ScriptDir "trace.ct"
 $Portable = Join-Path $ScriptDir "trace-portable.ct"
 $CtMcr    = Join-Path $NativeRecorder "ct_cli\ct_mcr.exe"
+
+# Canonical, pinned recording id of the portable export. Consumers hardcode it:
+#   codetracer/src/common/fixture_ids.nim
+#   codetracer/src/db-backend/tests/common/fixture_ids.rs
+#   codetracer-example-recordings/FIXTURE_IDS.md
+# `ct-mcr record` has no option to pin the raw trace's id.
+$PortableRecordingId = "019e3a35-2545-7a00-8aaa-43ff20060002"
 
 Write-Host "=== Regenerating Windows x86_64 MCR fixture ==="
 Write-Host "  Source:   $Source"
@@ -61,6 +71,7 @@ New-Item -ItemType Directory -Path (Split-Path $Binary) -Force | Out-Null
 Push-Location $ScriptDir
 try {
     cl /Od /Zi /Fe:$Binary $Source /link /DEBUG
+    if ($LASTEXITCODE -ne 0) { throw "cl failed with exit code $LASTEXITCODE" }
 } finally {
     Pop-Location
 }
@@ -78,12 +89,14 @@ if (-not (Test-Path $CtMcr)) {
 }
 Remove-Item -Path $Trace -Force -ErrorAction SilentlyContinue
 & $CtMcr record --use-interpose -o $Trace -- $Binary
+if ($LASTEXITCODE -ne 0) { throw "ct-mcr record failed with exit code $LASTEXITCODE" }
 Write-Host ""
 
 # Step 4: Export portable trace (for GUI E2E tests)
 Write-Host ">>> Exporting portable trace..."
 Remove-Item -Path $Portable -Force -ErrorAction SilentlyContinue
-& $CtMcr export --portable -v -o $Portable $Trace
+& $CtMcr export --portable -v --recording-id $PortableRecordingId -o $Portable $Trace
+if ($LASTEXITCODE -ne 0) { throw "ct-mcr export failed with exit code $LASTEXITCODE" }
 Write-Host ""
 
 # Step 5: Verify
