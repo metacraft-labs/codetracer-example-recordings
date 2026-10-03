@@ -88,7 +88,7 @@ if (-not (Test-Path $CtMcr)) {
     throw "ct-mcr not found at $CtMcr. Build it from codetracer-native-recorder first."
 }
 Remove-Item -Path $Trace -Force -ErrorAction SilentlyContinue
-& $CtMcr record --use-interpose -o $Trace -- $Binary
+& $CtMcr record -o $Trace -- $Binary
 if ($LASTEXITCODE -ne 0) { throw "ct-mcr record failed with exit code $LASTEXITCODE" }
 Write-Host ""
 

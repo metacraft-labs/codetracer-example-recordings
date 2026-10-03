@@ -16,7 +16,7 @@ Pre-made `.ct` recording from a Windows x86_64 machine for DAP integration testi
 
 | File | Description |
 |------|-------------|
-| `trace.ct` | Raw CTFS container with event streams, recorded via `ct-mcr record --use-interpose`. Does NOT contain embedded binaries or filemap. Used by emulator unit tests. |
+| `trace.ct` | Raw CTFS container with event streams, recorded via `ct-mcr record`. Does NOT contain embedded binaries or filemap. Used by emulator unit tests. |
 | `trace-portable.ct` | Enriched portable trace with embedded binaries and debug symbols, created via `ct-mcr export --portable`. Used by browser GUI E2E tests. |
 | `binaries/ct_fixture_prog.exe` | x86_64 PE executable compiled from `programs/ct_fixture_prog.c` with `/Od /Zi` (MSVC, no optimizations, debug info). |
 | `source.c` | Symlink to `../../programs/ct_fixture_prog.c` (shared cross-platform source). |
@@ -45,7 +45,7 @@ Or step by step:
 # 2. Compile
 cl /Od /Zi /Fe:mcr\windows-x86_64\binaries\ct_fixture_prog.exe programs\ct_fixture_prog.c /link /DEBUG
 # 3. Record raw trace
-ct-mcr record --use-interpose -o mcr\windows-x86_64\trace.ct -- mcr\windows-x86_64\binaries\ct_fixture_prog.exe
+ct-mcr record -o mcr\windows-x86_64\trace.ct -- mcr\windows-x86_64\binaries\ct_fixture_prog.exe
 # 4. Export portable trace
 ct-mcr export --portable -v -o mcr\windows-x86_64\trace-portable.ct mcr\windows-x86_64\trace.ct
 ```

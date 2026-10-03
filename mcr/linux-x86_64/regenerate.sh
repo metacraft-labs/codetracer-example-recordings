@@ -67,7 +67,7 @@ echo ""
 # Step 3: Raw MCR recording (for emulator unit tests)
 echo ">>> Recording with ct-mcr (raw)..."
 rm -f "$TRACE"
-"$CT_MCR" record --use-interpose -o "$TRACE" -- "$BINARY"
+"$CT_MCR" record -o "$TRACE" -- "$BINARY"
 echo ""
 
 # Step 4: Export as portable trace (for GUI E2E tests)

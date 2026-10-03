@@ -34,7 +34,7 @@ PORTABLE="$SCRIPT_DIR/trace-portable.ct"
 # Keep them in sync there if they ever change.
 #
 # NOTE on the raw trace id: the Linux interpose backend records via
-# `ct-mcr record --use-interpose`, which does NOT (yet) accept a
+# `ct-mcr record`, which does NOT (yet) accept a
 # `--recording-id` flag to pin the raw container's recording_id — the
 # raw MCR container is still a pre-meta.dat v2 container (see
 # FIXTURE_IDS.md).  RECORDING_ID below is therefore the *reserved*
@@ -77,10 +77,10 @@ echo "  ct-mcr: $CT_MCR"
 echo ""
 
 # Step 3: Raw MCR recording (for emulator unit tests)
-# `record --use-interpose` has no `--recording-id`; see RECORDING_ID note above.
+# `record` has no `--recording-id`; see RECORDING_ID note above.
 echo ">>> Recording with ct-mcr (raw)..."
 rm -f "$TRACE"
-"$CT_MCR" record --use-interpose -o "$TRACE" -- "$BINARY"
+"$CT_MCR" record -o "$TRACE" -- "$BINARY"
 echo ""
 
 # Step 4: Export as portable trace (for GUI E2E tests)
