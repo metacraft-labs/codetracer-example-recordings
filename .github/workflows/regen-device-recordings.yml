@@ -689,11 +689,13 @@ jobs:
           # recording captures it. Only the dev shell's PATH (nginx, curl,
           # just, the recorder's tools) is kept. Attach mode: the recipe's
           # default; the fixture's consumers read its spans and events and
-          # never replay it.
+          # never replay it. `--no-deps`: the recipe's dependency rebuilds the
+          # server-record tool, which the build step already built and which
+          # cannot be built with no HOME.
           # shellcheck disable=SC2016 # the inner script expands $PATH and $0 itself
           (cd ../codetracer-native-recorder && nix develop --command bash -c '
             exec env -i PATH="$PATH" HOME=/nonexistent LANG=C TZ=UTC CT_LICENSE_DEV_NO_FFI=1 \
-              just record-request-panel-fixture "$0"' "$GITHUB_WORKSPACE/regen-out/native_nginx") 2>&1 | tee regen-logs/record-nginx.log
+              just --no-deps record-request-panel-fixture "$0"' "$GITHUB_WORKSPACE/regen-out/native_nginx") 2>&1 | tee regen-logs/record-nginx.log
 
       - name: Verify container version, ct-print and credentials
         run: |
