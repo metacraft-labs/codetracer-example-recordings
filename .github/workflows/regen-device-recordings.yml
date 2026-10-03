@@ -112,15 +112,15 @@ jobs:
       - name: Build ct-mcr and ct-print
         run: |
           set -o pipefail
+          # `nix develop <dir>` keeps the caller's directory, so enter each repo
+          # first: the recorder's shell hook and the builds work relative to it.
           {
-            nix develop ../codetracer-native-recorder --command bash -c '
+            (cd ../codetracer-native-recorder && nix develop --command bash -c '
               set -euo pipefail
               cd ct_cli
               nimble build
-              codesign -s - -f --entitlements record-entitlements.plist ct_cli'
-            nix develop ../codetracer-trace-format-nim --command bash -c '
-              set -euo pipefail
-              nimble buildCtPrint'
+              codesign -s - -f --entitlements record-entitlements.plist ct_cli')
+            (cd ../codetracer-trace-format-nim && nix develop --command nimble buildCtPrint)
           } 2>&1 | tee regen-logs/build.log
 
       - name: Regenerate mcr/macos-arm64
@@ -226,7 +226,7 @@ jobs:
         if: steps.pre.outputs.ok == 'true'
         run: |
           set -o pipefail
-          nix develop ../codetracer-trace-format-nim --command nimble buildCtPrint 2>&1 | tee regen-logs/build.log
+          (cd ../codetracer-trace-format-nim && nix develop --command nimble buildCtPrint) 2>&1 | tee regen-logs/build.log
 
       - name: Regenerate mcr/macos-arm64/emulator
         if: steps.pre.outputs.ok == 'true'
@@ -306,7 +306,7 @@ jobs:
             printf '%s\n' "$runtimes"
           fi
           if ! $ok; then
-            echo "::notice title=ios-arm64 skipped::$RUNNER_NAME has no Xcode with the iOS simulator SDK and an iOS simulator runtime."
+            echo "::notice title=ios-arm64 skipped::$RUNNER_NAME cannot run the iOS simulator: it needs Xcode with the iOS simulator SDK, and CoreSimulator usable by the runner account (see the probe output)."
           fi
           echo "ok=$ok" >>"$GITHUB_OUTPUT"
 
@@ -345,15 +345,15 @@ jobs:
         if: steps.pre.outputs.ok == 'true'
         run: |
           set -o pipefail
+          # `nix develop <dir>` keeps the caller's directory, so enter each repo
+          # first: the recorder's shell hook and the builds work relative to it.
           {
-            nix develop ../codetracer-native-recorder --command bash -c '
+            (cd ../codetracer-native-recorder && nix develop --command bash -c '
               set -euo pipefail
               cd ct_cli
               nimble build
-              codesign -s - -f --entitlements record-entitlements.plist ct_cli'
-            nix develop ../codetracer-trace-format-nim --command bash -c '
-              set -euo pipefail
-              nimble buildCtPrint'
+              codesign -s - -f --entitlements record-entitlements.plist ct_cli')
+            (cd ../codetracer-trace-format-nim && nix develop --command nimble buildCtPrint)
           } 2>&1 | tee regen-logs/build.log
 
       - name: Regenerate mcr/ios-arm64
