@@ -1,9 +1,6 @@
 node_modules
 node_modules/
 
-# Nix-generated pre-commit config
-.pre-commit-config.yaml
-
 # Nix build outputs
 result
 result-bin

@@ -8,26 +8,26 @@ was produced by a real CodeTracer recorder over a real program.
 
 ## Recordings
 
-| Language | Directory | Recorder | Trace Format |
-|----------|-----------|----------|--------------|
-| Rust | `rust/flow_test/` | `ct-rr-support` (RR) | RR trace + metadata |
-| C | `c/flow_test/` | `ct-rr-support` (RR) | RR trace + metadata |
-| Go | `go/flow_test/` | `ct-rr-support` (RR) | RR trace + metadata |
-| Nim | `nim/flow_test/` | `ct-rr-support` (RR) | RR trace + metadata |
-| Python | `python/flow_test/` | `codetracer-python-recorder` | CBOR+zstd binary |
-| Ruby | `ruby/flow_test/` | `codetracer-ruby-recorder` (native) | CTFS container |
-| JavaScript | `javascript/flow_test/` | `codetracer-js-recorder` | CTFS container |
+| Language   | Directory               | Recorder                            | Trace Format        |
+| ---------- | ----------------------- | ----------------------------------- | ------------------- |
+| Rust       | `rust/flow_test/`       | `ct-rr-support` (RR)                | RR trace + metadata |
+| C          | `c/flow_test/`          | `ct-rr-support` (RR)                | RR trace + metadata |
+| Go         | `go/flow_test/`         | `ct-rr-support` (RR)                | RR trace + metadata |
+| Nim        | `nim/flow_test/`        | `ct-rr-support` (RR)                | RR trace + metadata |
+| Python     | `python/flow_test/`     | `codetracer-python-recorder`        | CBOR+zstd binary    |
+| Ruby       | `ruby/flow_test/`       | `codetracer-ruby-recorder` (native) | CTFS container      |
+| JavaScript | `javascript/flow_test/` | `codetracer-js-recorder`            | CTFS container      |
 
 ### MCR Recordings
 
-| Platform | Directory | Device | Format |
-|----------|-----------|--------|--------|
-| macOS ARM64 | `mcr/macos-arm64/` | Apple Silicon Mac (M1) | `.ct` (CTFS) |
-| Linux x86_64 | `mcr/linux-x86_64/` | Linux AMD64 (ct-mcr interpose) | `.ct` (CTFS) |
-| Android ARM64 | `mcr/android-arm64/` | Samsung Galaxy S24 Ultra | `.ct` (CTFS) |
-| iOS ARM64 | `mcr/ios-arm64/` | iPhone 17 Pro simulator | `.ct` (CTFS) |
+| Platform       | Directory             | Device                            | Format       |
+| -------------- | --------------------- | --------------------------------- | ------------ |
+| macOS ARM64    | `mcr/macos-arm64/`    | Apple Silicon Mac (M1)            | `.ct` (CTFS) |
+| Linux x86_64   | `mcr/linux-x86_64/`   | Linux AMD64 (ct-mcr interpose)    | `.ct` (CTFS) |
+| Android ARM64  | `mcr/android-arm64/`  | Samsung Galaxy S24 Ultra          | `.ct` (CTFS) |
+| iOS ARM64      | `mcr/ios-arm64/`      | iPhone 17 Pro simulator           | `.ct` (CTFS) |
 | Windows x86_64 | `mcr/windows-x86_64/` | Windows 11 x64 (ct-mcr interpose) | `.ct` (CTFS) |
-| Linux ARM64 | `mcr/linux-arm64/` | Linux ARM64 (ct-mcr interpose) | `.ct` (CTFS) |
+| Linux ARM64    | `mcr/linux-arm64/`    | Linux ARM64 (ct-mcr interpose)    | `.ct` (CTFS) |
 
 ### MCR emulator fixtures
 
@@ -38,13 +38,13 @@ replay** and **lockstep-diff** suites in `codetracer-native-recorder` — the
 suites that pin how far the emulator gets through a real macOS bring-up and
 where it honestly stops.
 
-| Directory | Victim | Recorded via |
-|-----------|--------|--------------|
-| `emulator/eme5/` | `null_main`, `one_puts` | `ct_cli record` (interpose) |
-| `emulator/eme5_inject/` | `one_write` | injected record (`--experimental-no-sip-mode`) |
-| `emulator/eme5_predyld/` | `one_write` | injected record + in-child pre-dyld installer |
-| `emulator/eme_ete_2006/` | `one_write` | injected record + M9c + Apple ETE (archival) |
-| `emulator/eme_m9c_2006/` | `one_write` | injected record + M9c whole-program svc capture |
+| Directory                | Victim                  | Recorded via                                    |
+| ------------------------ | ----------------------- | ----------------------------------------------- |
+| `emulator/eme5/`         | `null_main`, `one_puts` | `ct_cli record` (interpose)                     |
+| `emulator/eme5_inject/`  | `one_write`             | injected record (`--experimental-no-sip-mode`)  |
+| `emulator/eme5_predyld/` | `one_write`             | injected record + in-child pre-dyld installer   |
+| `emulator/eme_ete_2006/` | `one_write`             | injected record + M9c + Apple ETE (archival)    |
+| `emulator/eme_m9c_2006/` | `one_write`             | injected record + M9c whole-program svc capture |
 
 These are device-bound: an Apple Silicon Mac with SIP disabled, an entitled
 recorder, and a quiet host. See
@@ -79,16 +79,17 @@ implementation.
 Each platform recording needs a `regenerate.sh` (or `.ps1` on Windows)
 that produces both `trace.ct` and `trace-portable.ct`. Status:
 
-| Platform | `regenerate.sh` | `trace.ct` | `trace-portable.ct` | Notes |
-|----------|----------------|------------|---------------------|-------|
-| linux-x86_64 | done | done | done | Reference implementation |
-| macos-arm64 | done | done (synthetic) | done | — |
-| windows-x86_64 | done (.ps1) | done | done | — |
-| android-arm64 | done | done | done | — |
-| ios-arm64 | done | done | done | — |
-| linux-arm64 | done | TODO | TODO | Script + CI workflow ready; traces pending first run on an ARM64 Linux host |
+| Platform       | `regenerate.sh` | `trace.ct`       | `trace-portable.ct` | Notes                                                                       |
+| -------------- | --------------- | ---------------- | ------------------- | --------------------------------------------------------------------------- |
+| linux-x86_64   | done            | done             | done                | Reference implementation                                                    |
+| macos-arm64    | done            | done (synthetic) | done                | —                                                                           |
+| windows-x86_64 | done (.ps1)     | done             | done                | —                                                                           |
+| android-arm64  | done            | done             | done                | —                                                                           |
+| ios-arm64      | done            | done             | done                | —                                                                           |
+| linux-arm64    | done            | TODO             | TODO                | Script + CI workflow ready; traces pending first run on an ARM64 Linux host |
 
 To regenerate a platform (example for Linux x86_64):
+
 ```bash
 direnv exec ../codetracer bash mcr/linux-x86_64/regenerate.sh
 ```
@@ -98,6 +99,7 @@ direnv exec ../codetracer bash mcr/linux-x86_64/regenerate.sh
 All platform `regenerate.sh` scripts should produce both `trace.ct` (raw)
 and `trace-portable.ct` (enriched via `ct-mcr export --portable`).
 See `mcr/linux-x86_64/regenerate.sh` for the reference implementation.
+
 ## Standard Recordings
 
 All standard test programs compute the same values: `calculate_sum(10, 32)` = 483,
@@ -143,59 +145,37 @@ ct-rr-support record -o nim/flow_test /tmp/nim_flow_test
 codetracer-python-recorder --trace-dir python/flow_test --format binary programs/python_flow_test.py
 ```
 
-#### Ruby recording
+#### Ruby and JavaScript recordings
 
-The Ruby fixture is produced by the native `codetracer-ruby-recorder`
-(the production recorder per `codetracer-ruby-recorder/AGENTS.md` — the
-pure-Ruby reference implementation is not intended for CodeTracer
-integration). The native recorder emits a single CTFS v3+ binary trace
-bundle (`<program>.ct`). For the integration-test fixture we rename the
-bundle to `trace.json` so it matches the spec's expected materialized
-layout (`trace.bin`/`trace.json` next to `trace_metadata.json` /
-`trace_paths.json`); the host detects the CTFS magic and routes the
-payload through the normal CTFS replay path (see
-`codetracer/src/ct/trace/host.nim` ~line 574 — "Some 'materialized'
-trace folders ship a `trace.bin` that is in fact a CTFS container...").
+Both fixtures are produced by the production recorders — the native
+`codetracer-ruby-recorder` and `codetracer-js-recorder` — and each is a
+single CTFS container, `trace.ct`, beside `trace_metadata.json`,
+`trace_paths.json` and the source under `files/`.
+
+A `trace.json` is never a recording: it is what the pure-Python and
+pure-Ruby test oracles write, to be compared against `ct print` of a
+production recording, and CodeTracer refuses to open it.
 
 ```bash
-# Stage the source so the recording's recorded workdir matches the
-# fixture-shipped /tmp/ct-example-recordings-build/ path used by other
-# fixtures (Python, JavaScript).
+# Stage the sources so the recorded paths are the fixture-shipped
+# /tmp/ct-example-recordings-build/ paths the other fixtures use.
 mkdir -p /tmp/ct-example-recordings-build
-cp programs/ruby_flow_test.rb /tmp/ct-example-recordings-build/
-
-# Record (run from /tmp/ct-example-recordings-build so the recorded
-# program path is just `ruby_flow_test.rb` rather than an absolute path
-# rooted in this checkout).
+cp programs/ruby_flow_test.rb programs/javascript_flow_test.js \
+   /tmp/ct-example-recordings-build/
 cd /tmp/ct-example-recordings-build
-codetracer-ruby-recorder --out-dir . ruby_flow_test.rb
 
-# Install into the fixture directory as `trace.json` (the integration
-# test expects this name; CTFS-magic detection in `ct host` rewrites it
-# to `trace.ct` at import time).
-mv ruby.ct <repo>/ruby/flow_test/trace.json
+# Ruby (from a built codetracer-ruby-recorder checkout).
+codetracer-ruby-recorder --out-dir rb-out \
+  /tmp/ct-example-recordings-build/ruby_flow_test.rb
+cp rb-out/ruby.ct <repo>/ruby/flow_test/trace.ct
 
-# Materialized layout siblings, matching python/javascript fixtures.
-cat > <repo>/ruby/flow_test/trace_metadata.json <<'EOF'
-{
-  "program": "/tmp/ct-example-recordings-build/ruby_flow_test.rb",
-  "args": [],
-  "workdir": "/tmp/ct-example-recordings-build"
-}
-EOF
-cat > <repo>/ruby/flow_test/trace_paths.json <<'EOF'
-[
-  "",
-  "/tmp/ct-example-recordings-build/ruby_flow_test.rb"
-]
-EOF
-
-# Ship the source under the same mirrored absolute path so the host's
-# `files/` layout works for the GUI editor.
-mkdir -p <repo>/ruby/flow_test/files/tmp/ct-example-recordings-build
-cp programs/ruby_flow_test.rb \
-   <repo>/ruby/flow_test/files/tmp/ct-example-recordings-build/
+# JavaScript (from a built codetracer-js-recorder checkout).
+codetracer-js-recorder record javascript_flow_test.js --out-dir js-out
+cp js-out/trace-1/javascript_flow_test.ct <repo>/javascript/flow_test/trace.ct
 ```
+
+`trace_metadata.json`, `trace_paths.json` and `files/` are unchanged by a
+re-recording as long as the programs and the staging path are.
 
 #### MCR recordings
 
@@ -229,6 +209,7 @@ For Linux ARM64 (must be run on an ARM64 host):
 ```bash
 direnv exec ../codetracer bash mcr/linux-arm64/regenerate.sh
 ```
+
 For Windows x86_64:
 
 ```powershell
