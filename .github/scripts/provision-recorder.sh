@@ -4,7 +4,7 @@
 # expect (`<parent>/codetracer-native-recorder`, `<parent>/codetracer-trace-format-nim`, ...).
 #
 # Usage:
-#   provision-recorder.sh <codetracer-ref> <parent-dir> [--with-codetracer]
+#   GH_TOKEN=<token> provision-recorder.sh <codetracer-ref> <parent-dir> [--with-codetracer]
 #
 #   <codetracer-ref>   branch, tag or SHA of metacraft-labs/codetracer whose
 #                      committed repro.lock names the recorder revision
@@ -21,7 +21,7 @@
 # would not be the revision anybody recorded against.
 #
 # Runs under bash 3.2 (macOS) and Git Bash (Windows): no associative arrays,
-# no mapfile.  Every repository involved is public, so no credential is used.
+# no mapfile.
 #
 # Writes `<parent-dir>/recorder-pins.txt`, and the same pins to $GITHUB_OUTPUT
 # when that is set.
@@ -40,6 +40,23 @@ if [ "${3:-}" = "--with-codetracer" ]; then
 	WITH_CODETRACER=true
 fi
 
+# Credentials.  codetracer-native-recorder and codetracer-visual-replay are
+# private, so GH_TOKEN (in CI: a CI Token Provider installation token) must
+# be able to read them.  It is sent as the ONLY credential: CI steps before
+# this one may inject another GitHub Authorization header through
+# GIT_CONFIG_* (setup-nix does), and GitHub refuses a request carrying two
+# ("Duplicate header").  The token goes to github.com only.
+unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_TERMINAL_PROMPT=0
+if [ -z "${GH_TOKEN:-}" ]; then
+	echo "error: GH_TOKEN is not set; the recorder repositories are private" >&2
+	exit 1
+fi
+AUTH_HEADER="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')"
+gitauth() {
+	git -c "http.https://github.com/.extraheader=$AUTH_HEADER" "$@"
+}
+
 ORG_URL="https://github.com/metacraft-labs"
 SIBLINGS="codetracer-trace-format-nim codetracer-visual-replay nim-stackable-hooks"
 
@@ -53,7 +70,7 @@ resolve_ref() {
 		printf '%s\n' "$ref"
 		return
 	fi
-	sha="$(git ls-remote "$ORG_URL/$repo" "refs/heads/$ref" "refs/tags/$ref" | head -1 | cut -f1)"
+	sha="$(gitauth ls-remote "$ORG_URL/$repo" "refs/heads/$ref" "refs/tags/$ref" | head -1 | cut -f1)"
 	if [ -z "$sha" ]; then
 		echo "error: $repo has no branch or tag named '$ref'" >&2
 		exit 1
@@ -78,7 +95,7 @@ clone_at() {
 		git init -q "$dir"
 		git -C "$dir" remote add origin "$ORG_URL/$repo"
 	fi
-	git -C "$dir" fetch -q --depth 1 origin "$sha"
+	gitauth -C "$dir" fetch -q --depth 1 origin "$sha"
 	git -C "$dir" checkout -q --force --detach FETCH_HEAD
 	git -C "$dir" clean -q -ffdx
 	local got

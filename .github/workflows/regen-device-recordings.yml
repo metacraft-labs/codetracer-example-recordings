@@ -77,6 +77,11 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Put the system tool directories on PATH
+        # The self-hosted macOS runners start jobs with a Nix-only PATH, which
+        # has no grep, csrutil, xcrun or codesign.
+        run: echo "PATH=$PATH:/usr/bin:/bin:/usr/sbin:/sbin" >>"$GITHUB_ENV"
+
       - name: Checkout
         uses: actions/checkout@v5
 
@@ -87,7 +92,18 @@ jobs:
           substituters: ${{ vars.ATTIC_SUBSTITUTER }}
           trusted-public-keys: ${{ vars.ATTIC_TRUSTED_PUBLIC_KEY }}
 
+      - name: Generate CI token
+        # codetracer-native-recorder and codetracer-visual-replay are private.
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.CI_TOKEN_PROVIDER_APP_ID }}
+          private-key: ${{ secrets.CI_TOKEN_PROVIDER_PRIVATE_KEY }}
+          owner: metacraft-labs
+
       - name: Provision the pinned recorder and its siblings
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           mkdir -p regen-logs
           bash .github/scripts/provision-recorder.sh "$CODETRACER_REF" .. 2>&1 | tee regen-logs/provision.log
@@ -154,6 +170,11 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Put the system tool directories on PATH
+        # The self-hosted macOS runners start jobs with a Nix-only PATH, which
+        # has no grep, csrutil, xcrun or codesign.
+        run: echo "PATH=$PATH:/usr/bin:/bin:/usr/sbin:/sbin" >>"$GITHUB_ENV"
+
       - name: Check that SIP is disabled
         id: pre
         # The injected record path these fixtures come from needs SIP off.
@@ -182,8 +203,20 @@ jobs:
           substituters: ${{ vars.ATTIC_SUBSTITUTER }}
           trusted-public-keys: ${{ vars.ATTIC_TRUSTED_PUBLIC_KEY }}
 
+      - name: Generate CI token
+        if: steps.pre.outputs.ok == 'true'
+        # codetracer-native-recorder and codetracer-visual-replay are private.
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.CI_TOKEN_PROVIDER_APP_ID }}
+          private-key: ${{ secrets.CI_TOKEN_PROVIDER_PRIVATE_KEY }}
+          owner: metacraft-labs
+
       - name: Provision the pinned recorder and its siblings
         if: steps.pre.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           mkdir -p regen-logs
           bash .github/scripts/provision-recorder.sh "$CODETRACER_REF" .. 2>&1 | tee regen-logs/provision.log
@@ -232,6 +265,11 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Put the system tool directories on PATH
+        # The self-hosted macOS runners start jobs with a Nix-only PATH, which
+        # has no grep, csrutil, xcrun or codesign.
+        run: echo "PATH=$PATH:/usr/bin:/bin:/usr/sbin:/sbin" >>"$GITHUB_ENV"
+
       - name: Check for Xcode and an iOS simulator
         id: pre
         # The fixture is a CTSP recording of a program running in the iOS
@@ -271,8 +309,20 @@ jobs:
           substituters: ${{ vars.ATTIC_SUBSTITUTER }}
           trusted-public-keys: ${{ vars.ATTIC_TRUSTED_PUBLIC_KEY }}
 
+      - name: Generate CI token
+        if: steps.pre.outputs.ok == 'true'
+        # codetracer-native-recorder and codetracer-visual-replay are private.
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.CI_TOKEN_PROVIDER_APP_ID }}
+          private-key: ${{ secrets.CI_TOKEN_PROVIDER_PRIVATE_KEY }}
+          owner: metacraft-labs
+
       - name: Provision the pinned recorder and its siblings
         if: steps.pre.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           mkdir -p regen-logs
           bash .github/scripts/provision-recorder.sh "$CODETRACER_REF" .. 2>&1 | tee regen-logs/provision.log
@@ -350,8 +400,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Generate CI token
+        # codetracer-native-recorder and codetracer-visual-replay are private.
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.CI_TOKEN_PROVIDER_APP_ID }}
+          private-key: ${{ secrets.CI_TOKEN_PROVIDER_PRIVATE_KEY }}
+          owner: metacraft-labs
+
       - name: Provision codetracer, the pinned recorder and its siblings
         shell: bash
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           mkdir -p regen-logs
           bash .github/scripts/provision-recorder.sh "$CODETRACER_REF" .. --with-codetracer 2>&1 | tee regen-logs/provision.log
