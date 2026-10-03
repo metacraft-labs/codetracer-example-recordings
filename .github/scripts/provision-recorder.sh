@@ -53,8 +53,11 @@ if [ -z "${GH_TOKEN:-}" ]; then
 	exit 1
 fi
 AUTH_HEADER="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')"
+# The empty values first clear any extraheader already configured, e.g. the one
+# actions/checkout stores in the checkout's own .git/config.
 gitauth() {
-	git -c "http.https://github.com/.extraheader=$AUTH_HEADER" "$@"
+	git -c http.extraheader= -c http.https://github.com/.extraheader= \
+		-c "http.https://github.com/.extraheader=$AUTH_HEADER" "$@"
 }
 
 ORG_URL="https://github.com/metacraft-labs"
@@ -70,7 +73,7 @@ resolve_ref() {
 		printf '%s\n' "$ref"
 		return
 	fi
-	sha="$(gitauth ls-remote "$ORG_URL/$repo" "refs/heads/$ref" "refs/tags/$ref" | head -1 | cut -f1)"
+	sha="$(cd / && gitauth ls-remote "$ORG_URL/$repo" "refs/heads/$ref" "refs/tags/$ref" | head -1 | cut -f1)"
 	if [ -z "$sha" ]; then
 		echo "error: $repo has no branch or tag named '$ref'" >&2
 		exit 1

@@ -29,6 +29,13 @@ TRACE="$SCRIPT_DIR/trace.ct"
 PORTABLE="$SCRIPT_DIR/trace-portable.ct"
 
 CTSP_PORT=14290
+
+# Canonical, pinned recording id of the portable export. Consumers hardcode it:
+#   codetracer/src/common/fixture_ids.nim
+#   codetracer/src/db-backend/tests/common/fixture_ids.rs
+#   codetracer-example-recordings/FIXTURE_IDS.md
+# The raw trace.ct is written by the stream receiver, which mints its own id.
+PORTABLE_RECORDING_ID="019e3a35-2544-7a00-8aaa-43ff20050002"
 DEVICE_BINARY_PATH="/data/local/tmp/android_ctsp_client"
 
 RECEIVER_PID=""
@@ -218,7 +225,8 @@ TRACE_PROGRAM=$("$CT_MCR" trace info "$TRACE" 2>/dev/null | grep "^program:" | s
 if [ -n "$TRACE_PROGRAM" ] && [ ! -f "$SCRIPT_DIR/binaries/$TRACE_PROGRAM" ]; then
   ln -sf "$(basename "$BINARY")" "$SCRIPT_DIR/binaries/$TRACE_PROGRAM"
 fi
-(cd "$SCRIPT_DIR/binaries" && "$CT_MCR" export --portable -v -o "$PORTABLE" "$TRACE")
+(cd "$SCRIPT_DIR/binaries" && "$CT_MCR" export --portable -v \
+	--recording-id "$PORTABLE_RECORDING_ID" -o "$PORTABLE" "$TRACE")
 rm -f "$SCRIPT_DIR/binaries/$TRACE_PROGRAM"
 echo ""
 

@@ -280,6 +280,16 @@ jobs:
         run: |
           ok=true
           echo "xcode-select -p: $(xcode-select -p 2>&1 || true)"
+          # A full Xcode that is installed but not selected still counts.
+          xcode_app=""
+          for d in /Applications/Xcode*.app; do
+            if [ -d "$d" ]; then xcode_app="$d"; break; fi
+          done
+          echo "Xcode app: ${xcode_app:-none in /Applications}"
+          if [ -n "$xcode_app" ]; then
+            export DEVELOPER_DIR="$xcode_app/Contents/Developer"
+            echo "DEVELOPER_DIR=$DEVELOPER_DIR" >>"$GITHUB_ENV"
+          fi
           if ! sdk="$(xcrun --sdk iphonesimulator --show-sdk-path 2>&1)"; then
             echo "no iphonesimulator SDK: $sdk"
             ok=false
