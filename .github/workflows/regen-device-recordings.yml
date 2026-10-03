@@ -296,6 +296,9 @@ jobs:
           else
             echo "iphonesimulator SDK: $sdk"
           fi
+          # CoreSimulator keeps its device set under the runner account's
+          # home; a service account that never ran a simulator has none.
+          mkdir -p "$HOME/Library/Developer/CoreSimulator/Devices"
           if ! runtimes="$(xcrun simctl list runtimes 2>&1)" || ! printf '%s' "$runtimes" | grep -q '^iOS'; then
             echo "no iOS simulator runtime: $runtimes"
             ok=false
