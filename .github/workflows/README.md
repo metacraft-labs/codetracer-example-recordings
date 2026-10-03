@@ -48,6 +48,14 @@ uploads the recordings, the pins and the logs as an artifact. It commits
 nothing and opens no pull request: the person who dispatched it downloads the
 artifact, re-verifies it and commits it.
 
+Its `linux-x86_64` job also records the two ct-mcr fixtures that live in
+codetracer itself (`src/db-backend/tests/fixtures/xos/xos_hello.ct`, unslimmed,
+and `src/tests/gui/tests/request-panel/fixtures/native_nginx/nginx.ct`). ct-mcr
+records on Linux only where a process can enable **CPUID faulting** (Intel, or
+AMD Zen 4 and later), so the job targets the bare-metal Linux hosts (all Intel)
+and fails by name, before building, when `.github/scripts/probe-cpuid-faulting.c`
+says the feature is absent.
+
 The emulator job and the iOS job check their precondition first (SIP
 disabled; Xcode with an iOS simulator) and skip with a notice when the runner
 lacks it, before building anything.

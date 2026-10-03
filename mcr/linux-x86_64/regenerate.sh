@@ -27,6 +27,13 @@ BINARY="$SCRIPT_DIR/binaries/ct_fixture_prog"
 TRACE="$SCRIPT_DIR/trace.ct"
 PORTABLE="$SCRIPT_DIR/trace-portable.ct"
 
+# Canonical, pinned recording id of the portable export. Consumers hardcode it:
+#   codetracer/src/common/fixture_ids.nim
+#   codetracer/src/db-backend/tests/common/fixture_ids.rs
+#   codetracer-example-recordings/FIXTURE_IDS.md
+# `ct-mcr record` has no option to pin the raw trace's id.
+PORTABLE_RECORDING_ID="019e3a35-2540-7a00-8aaa-43ff20010002"
+
 echo "=== Regenerating Linux x86_64 MCR fixture ==="
 echo "  Source: $SOURCE"
 echo "  Binary: $BINARY"
@@ -66,7 +73,7 @@ echo ""
 # Step 4: Export as portable trace (for GUI E2E tests)
 echo ">>> Exporting portable trace..."
 rm -f "$PORTABLE"
-"$CT_MCR" export --portable -v -o "$PORTABLE" "$TRACE"
+"$CT_MCR" export --portable -v --recording-id "$PORTABLE_RECORDING_ID" -o "$PORTABLE" "$TRACE"
 echo ""
 
 # Step 5: Verify

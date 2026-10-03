@@ -19,6 +19,11 @@
 #   ios-arm64              mcr/ios-arm64/{trace,trace-portable}.ct       Mac with Xcode + an iOS
 #                                                                       simulator; skipped otherwise
 #   windows-x86_64         mcr/windows-x86_64/{trace,trace-portable}.ct  Windows x64 + VS Build Tools
+#   linux-x86_64           mcr/linux-x86_64/{trace,trace-portable}.ct,   x86-64 Linux host with CPUID
+#                          and two fixtures that live in codetracer:     faulting; fails, saying so,
+#                          xos_hello.ct (recorded unslimmed; slim it      without it
+#                          with its rebuild.sh step 3) and
+#                          native_nginx/nginx.ct
 #
 # Not covered: `mcr/android-arm64` needs a USB-connected phone
 # (`regen-mcr-android-arm64.yml` / its regenerate.sh), and
@@ -50,6 +55,7 @@ on:
           - macos-arm64-emulator
           - ios-arm64
           - windows-x86_64
+          - linux-x86_64
 
 permissions:
   contents: read
@@ -506,6 +512,128 @@ jobs:
             mcr/windows-x86_64/trace.ct
             mcr/windows-x86_64/trace-portable.ct
             mcr/windows-x86_64/binaries/
+            regen-logs/
+          if-no-files-found: warn
+          retention-days: 3
+
+  linux-x86_64:
+    if: inputs.platforms == 'all' || inputs.platforms == 'linux-x86_64'
+    # `bare-metal`: ct-mcr records only where a process can enable CPUID
+    # faulting (Intel, or AMD Zen 4+), and only the bare-metal hosts are known
+    # to offer it -- all three are Intel (infra machines/server/*/hw-config.nix).
+    # The ephemeral runners are nested incus/libvirt guests, where it depends
+    # on the hypervisor.  The probe step below checks it either way.
+    runs-on: ${{ vars.CI_RUNNER_MODE == 'github-hosted' && 'ubuntu-latest' || fromJSON('["self-hosted","linux","x64","bare-metal"]') }}
+    # Recorder + interpose + ct-dwarf-paths build ~10 min, three recordings a
+    # few minutes; the rest is margin for a cold dev shell.
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Nix
+        uses: metacraft-labs/metacraft-github-actions/setup-nix@dev
+        with:
+          gh-token: ${{ github.token }}
+          substituters: ${{ vars.ATTIC_SUBSTITUTER }}
+          trusted-public-keys: ${{ vars.ATTIC_TRUSTED_PUBLIC_KEY }}
+
+      - name: Check that this host offers CPUID faulting
+        # Fails the job, by name, before anything is built: without CPUID
+        # faulting ct-mcr refuses every recording this job makes.
+        run: |
+          mkdir -p regen-logs
+          echo "host: $(uname -a)"
+          grep -m1 'model name' /proc/cpuinfo || true
+          nix shell nixpkgs#gcc --command \
+            cc -o "$RUNNER_TEMP/probe-cpuid-faulting" .github/scripts/probe-cpuid-faulting.c
+          if ! "$RUNNER_TEMP/probe-cpuid-faulting" 2>&1 | tee regen-logs/cpuid-probe.log; then
+            echo "::error title=No CPUID faulting::$RUNNER_NAME cannot enable CPUID faulting, so ct-mcr cannot record here. These recordings need an Intel host, or AMD Zen 4 or later, without a hypervisor hiding the feature."
+            exit 1
+          fi
+
+      - name: Generate CI token
+        # codetracer-native-recorder and codetracer-visual-replay are private.
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.CI_TOKEN_PROVIDER_APP_ID }}
+          private-key: ${{ secrets.CI_TOKEN_PROVIDER_PRIVATE_KEY }}
+          owner: metacraft-labs
+
+      - name: Provision codetracer, the pinned recorder and its siblings
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          bash .github/scripts/provision-recorder.sh "$CODETRACER_REF" .. --with-codetracer 2>&1 | tee regen-logs/provision.log
+          cp ../recorder-pins.txt regen-logs/
+
+      - name: Build ct-mcr and ct-print
+        # The parts of `just build-ct-mcr` a Linux recording uses: the CLI, the
+        # dynamic and static interpose libraries, the DWARF path helper, and the
+        # server-record tool the nginx recipe runs.  Not the licensing library
+        # (CT_LICENSE_DEV_NO_FFI), the CLR profiler or the Vulkan layer.
+        run: |
+          set -o pipefail
+          {
+            (cd ../codetracer-native-recorder && nix develop --command bash -c '
+              set -euo pipefail
+              just build-interpose build-interpose-static build-dwarf-paths build-codetracer-native-recorder
+              (cd ct_cli && nimble build)
+              cp ct_interpose/libct_interpose.so ct_cli/libct_interpose.so
+              cp ct_dwarf_paths/target/release/ct-dwarf-paths ct_cli/ct-dwarf-paths')
+            (cd ../codetracer-trace-format-nim && nix develop --command nimble buildCtPrint)
+          } 2>&1 | tee regen-logs/build.log
+
+      - name: Regenerate mcr/linux-x86_64
+        run: |
+          set -o pipefail
+          (cd ../codetracer-native-recorder && nix develop --command \
+            bash "$GITHUB_WORKSPACE/mcr/linux-x86_64/regenerate.sh") 2>&1 | tee regen-logs/regenerate-mcr.log
+
+      - name: Record codetracer's xos_hello fixture (unslimmed)
+        # Steps 1-2 of codetracer src/db-backend/tests/fixtures/xos/rebuild.sh.
+        # Step 3 (slimming cp0.mem with a db-backend cargo test) needs no
+        # special host and is run by whoever commits the result.
+        run: |
+          set -o pipefail
+          out="$GITHUB_WORKSPACE/regen-out/xos"
+          mkdir -p "$out"
+          cp ../codetracer/src/db-backend/tests/fixtures/xos/xos_hello.c "$out/"
+          # shellcheck disable=SC2016 # the inner script expands $0 and $1 itself
+          (cd ../codetracer-native-recorder && nix develop --command bash -c '
+            set -euo pipefail
+            cd "$0"
+            gcc -O0 -g -fdebug-prefix-map="$(pwd)=." -o xos_hello.elf xos_hello.c
+            "$1/ct_cli/ct_cli" record --source xos_hello.c -o xos_hello_full.ct -- ./xos_hello.elf
+          ' "$out" "$PWD/../codetracer-native-recorder") 2>&1 | tee regen-logs/record-xos.log
+
+      - name: Record codetracer's native_nginx request-panel fixture
+        run: |
+          set -o pipefail
+          (cd ../codetracer-native-recorder && nix develop --command \
+            just record-request-panel-fixture "$GITHUB_WORKSPACE/regen-out/native_nginx") 2>&1 | tee regen-logs/record-nginx.log
+
+      - name: Verify container version and ct-print
+        run: |
+          set -o pipefail
+          bash .github/scripts/verify-recordings.sh ../codetracer-trace-format-nim/ct-print \
+            mcr/linux-x86_64/trace.ct mcr/linux-x86_64/trace-portable.ct \
+            regen-out/xos/xos_hello_full.ct regen-out/native_nginx/nginx.ct 2>&1 | tee regen-logs/verify.log
+
+      - name: Upload recordings and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regen-linux-x86_64
+          path: |
+            mcr/linux-x86_64/trace.ct
+            mcr/linux-x86_64/trace-portable.ct
+            mcr/linux-x86_64/binaries/
+            regen-out/
             regen-logs/
           if-no-files-found: warn
           retention-days: 3
