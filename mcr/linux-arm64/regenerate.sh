@@ -78,9 +78,15 @@ echo ""
 
 # Step 3: Raw MCR recording (for emulator unit tests)
 # `record` has no `--recording-id`; see RECORDING_ID note above.
+# `env -i`: the recording captures the program's environment, so it is made
+# with only what the program needs. Recording from a CI job or a developer
+# shell otherwise publishes that shell's tokens in the fixture.
 echo ">>> Recording with ct-mcr (raw)..."
 rm -f "$TRACE"
-"$CT_MCR" record -o "$TRACE" -- "$BINARY"
+env -i PATH=/usr/bin:/bin HOME=/nonexistent LANG=C TZ=UTC \
+	${CT_LICENSE_DEV_NO_FFI:+CT_LICENSE_DEV_NO_FFI="$CT_LICENSE_DEV_NO_FFI"} \
+	${CODETRACER_LICENSE_FILE:+CODETRACER_LICENSE_FILE="$CODETRACER_LICENSE_FILE"} \
+	"$CT_MCR" record -o "$TRACE" -- "$BINARY"
 echo ""
 
 # Step 4: Export as portable trace (for GUI E2E tests)

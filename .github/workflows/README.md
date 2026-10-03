@@ -48,6 +48,18 @@ uploads the recordings, the pins and the logs as an artifact. It commits
 nothing and opens no pull request: the person who dispatched it downloads the
 artifact, re-verifies it and commits it.
 
+**A recording captures the recorded program's environment**, so every
+recording here is made without the job's credentials: checkouts do not
+persist a credential, each recording step first sources
+`.github/scripts/drop-credentials.sh` (which also refuses to go on if a
+credential-shaped value survives), and the regenerate scripts record under
+`env -i` (a cleared environment on Windows). `verify-recordings.sh` then fails
+any recording in which `.github/scripts/ct_credential_scan.nim` finds a token,
+an authorization header or a private key, in the raw bytes, in any member or
+in any zstd frame inside them; `test_ct_credential_scan.nim` plants fakes and
+checks the gate catches each one. On 2026-10-03 three fixtures recorded before
+these layers existed published a CI installation token (since revoked).
+
 Its `linux-x86_64` job also records the two ct-mcr fixtures that live in
 codetracer itself (`src/db-backend/tests/fixtures/xos/xos_hello.ct`, unslimmed,
 and `src/tests/gui/tests/request-panel/fixtures/native_nginx/nginx.ct`). ct-mcr

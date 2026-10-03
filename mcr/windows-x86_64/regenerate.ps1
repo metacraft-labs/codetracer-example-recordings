@@ -88,8 +88,29 @@ if (-not (Test-Path $CtMcr)) {
     throw "ct-mcr not found at $CtMcr. Build it from codetracer-native-recorder first."
 }
 Remove-Item -Path $Trace -Force -ErrorAction SilentlyContinue
-& $CtMcr record -o $Trace -- $Binary
-if ($LASTEXITCODE -ne 0) { throw "ct-mcr record failed with exit code $LASTEXITCODE" }
+# The recording captures the program's environment, so it is made with only
+# what the program and the recorder need (the PowerShell equivalent of
+# `env -i`); the shell's environment is restored afterwards. Recording from a
+# CI job or a developer shell otherwise publishes that shell's tokens in the
+# fixture.
+$keepVars = @("SystemRoot", "windir", "SystemDrive", "ComSpec", "PATHEXT",
+              "TEMP", "TMP", "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE",
+              "CT_LICENSE_DEV_NO_FFI", "CODETRACER_LICENSE_FILE")
+$savedEnv = @(Get-ChildItem env: | ForEach-Object { [pscustomobject]@{ Name = $_.Name; Value = $_.Value } })
+try {
+    foreach ($v in $savedEnv) {
+        if ($keepVars -notcontains $v.Name) { Remove-Item -Path "env:$($v.Name)" -ErrorAction SilentlyContinue }
+    }
+    $env:Path = "$env:SystemRoot\System32;$env:SystemRoot"
+    $env:LANG = "C"
+    & $CtMcr record -o $Trace -- $Binary
+    $recordExit = $LASTEXITCODE
+} finally {
+    foreach ($v in $savedEnv) { Set-Item -Path "env:$($v.Name)" -Value $v.Value }
+    Remove-Item -Path env:LANG -ErrorAction SilentlyContinue
+    if ($savedEnv.Name -contains "LANG") { $env:LANG = ($savedEnv | Where-Object Name -eq "LANG").Value }
+}
+if ($recordExit -ne 0) { throw "ct-mcr record failed with exit code $recordExit" }
 Write-Host ""
 
 # Step 4: Export portable trace (for GUI E2E tests)

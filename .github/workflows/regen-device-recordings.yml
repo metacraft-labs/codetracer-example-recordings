@@ -90,6 +90,10 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          # Nothing here pushes, and a persisted credential is one more copy
+          # of a token in the job a recording could capture.
+          persist-credentials: false
 
       - name: Set up Nix
         uses: metacraft-labs/metacraft-github-actions/setup-nix@dev
@@ -120,26 +124,34 @@ jobs:
           set -o pipefail
           # `nix develop <dir>` keeps the caller's directory, so enter each repo
           # first: the recorder's shell hook and the builds work relative to it.
+          # shellcheck disable=SC2016 # the inner scripts expand their own variables
           {
             (cd ../codetracer-native-recorder && nix develop --command bash -c '
               set -euo pipefail
               cd ct_cli
               nimble build
               codesign -s - -f --entitlements record-entitlements.plist ct_cli')
-            (cd ../codetracer-trace-format-nim && nix develop --command nimble buildCtPrint)
+            (cd ../codetracer-trace-format-nim && nix develop --command bash -c '
+              set -euo pipefail
+              nimble buildCtPrint
+              nim c -d:release --hints:off -p:src -o:ct-credential-scan "$0/.github/scripts/ct_credential_scan.nim"
+              nim c -d:release --hints:off -p:src -o:test_ct_credential_scan "$0/.github/scripts/test_ct_credential_scan.nim"
+              ./test_ct_credential_scan ./ct-credential-scan' "$GITHUB_WORKSPACE")
           } 2>&1 | tee regen-logs/build.log
 
       - name: Regenerate mcr/macos-arm64
         run: |
           set -o pipefail
+          . .github/scripts/drop-credentials.sh || exit 1
           nix develop ../codetracer-native-recorder --command \
             env CODETRACER="$PWD/../codetracer-native-recorder" \
             bash mcr/macos-arm64/regenerate.sh 2>&1 | tee regen-logs/regenerate.log
 
-      - name: Verify container version and ct-print
+      - name: Verify container version, ct-print and credentials
         run: |
           set -o pipefail
           bash .github/scripts/verify-recordings.sh ../codetracer-trace-format-nim/ct-print \
+            ../codetracer-trace-format-nim/ct-credential-scan \
             mcr/macos-arm64/trace.ct mcr/macos-arm64/trace-portable.ct 2>&1 | tee regen-logs/verify.log
 
       - name: Upload recordings and logs
@@ -200,6 +212,10 @@ jobs:
       - name: Checkout
         if: steps.pre.outputs.ok == 'true'
         uses: actions/checkout@v5
+        with:
+          # Nothing here pushes, and a persisted credential is one more copy
+          # of a token in the job a recording could capture.
+          persist-credentials: false
 
       - name: Set up Nix
         if: steps.pre.outputs.ok == 'true'
@@ -228,11 +244,17 @@ jobs:
           bash .github/scripts/provision-recorder.sh "$CODETRACER_REF" .. 2>&1 | tee regen-logs/provision.log
           cp ../recorder-pins.txt regen-logs/
 
-      - name: Build ct-print
+      - name: Build ct-print and the credential scanner
         if: steps.pre.outputs.ok == 'true'
         run: |
           set -o pipefail
-          (cd ../codetracer-trace-format-nim && nix develop --command nimble buildCtPrint) 2>&1 | tee regen-logs/build.log
+          # shellcheck disable=SC2016 # the inner script expands $0 itself
+          (cd ../codetracer-trace-format-nim && nix develop --command bash -c '
+            set -euo pipefail
+            nimble buildCtPrint
+            nim c -d:release --hints:off -p:src -o:ct-credential-scan "$0/.github/scripts/ct_credential_scan.nim"
+            nim c -d:release --hints:off -p:src -o:test_ct_credential_scan "$0/.github/scripts/test_ct_credential_scan.nim"
+            ./test_ct_credential_scan ./ct-credential-scan' "$GITHUB_WORKSPACE") 2>&1 | tee regen-logs/build.log
 
       - name: Regenerate mcr/macos-arm64/emulator
         if: steps.pre.outputs.ok == 'true'
@@ -240,14 +262,16 @@ jobs:
         # the shim maps that onto the recorder's flake dev shell.
         run: |
           set -o pipefail
+          . .github/scripts/drop-credentials.sh || exit 1
           export PATH="$PWD/.github/scripts/repro-shim:$PATH"
           bash mcr/macos-arm64/emulator/regenerate.sh 2>&1 | tee regen-logs/regenerate.log
 
-      - name: Verify container version and ct-print
+      - name: Verify container version, ct-print and credentials
         if: steps.pre.outputs.ok == 'true'
         run: |
           set -o pipefail
           bash .github/scripts/verify-recordings.sh ../codetracer-trace-format-nim/ct-print \
+            ../codetracer-trace-format-nim/ct-credential-scan \
             mcr/macos-arm64/emulator/eme5_inject/one_write.ct \
             mcr/macos-arm64/emulator/eme5_predyld/one_write.ct \
             mcr/macos-arm64/emulator/eme_m9c_2006/one_write.ct 2>&1 | tee regen-logs/verify.log
@@ -319,6 +343,10 @@ jobs:
       - name: Checkout
         if: steps.pre.outputs.ok == 'true'
         uses: actions/checkout@v5
+        with:
+          # Nothing here pushes, and a persisted credential is one more copy
+          # of a token in the job a recording could capture.
+          persist-credentials: false
 
       - name: Set up Nix
         if: steps.pre.outputs.ok == 'true'
@@ -353,13 +381,19 @@ jobs:
           set -o pipefail
           # `nix develop <dir>` keeps the caller's directory, so enter each repo
           # first: the recorder's shell hook and the builds work relative to it.
+          # shellcheck disable=SC2016 # the inner scripts expand their own variables
           {
             (cd ../codetracer-native-recorder && nix develop --command bash -c '
               set -euo pipefail
               cd ct_cli
               nimble build
               codesign -s - -f --entitlements record-entitlements.plist ct_cli')
-            (cd ../codetracer-trace-format-nim && nix develop --command nimble buildCtPrint)
+            (cd ../codetracer-trace-format-nim && nix develop --command bash -c '
+              set -euo pipefail
+              nimble buildCtPrint
+              nim c -d:release --hints:off -p:src -o:ct-credential-scan "$0/.github/scripts/ct_credential_scan.nim"
+              nim c -d:release --hints:off -p:src -o:test_ct_credential_scan "$0/.github/scripts/test_ct_credential_scan.nim"
+              ./test_ct_credential_scan ./ct-credential-scan' "$GITHUB_WORKSPACE")
           } 2>&1 | tee regen-logs/build.log
 
       - name: Regenerate mcr/ios-arm64
@@ -371,15 +405,17 @@ jobs:
         # dev shell.
         run: |
           set -o pipefail
+          . .github/scripts/drop-credentials.sh || exit 1
           export PATH="$PWD/.github/scripts/repro-shim:$PATH"
           CODETRACER="$PWD/../codetracer-native-recorder" \
             bash mcr/ios-arm64/regenerate.sh 2>&1 | tee regen-logs/regenerate.log
 
-      - name: Verify container version and ct-print
+      - name: Verify container version, ct-print and credentials
         if: steps.pre.outputs.ok == 'true'
         run: |
           set -o pipefail
           bash .github/scripts/verify-recordings.sh ../codetracer-trace-format-nim/ct-print \
+            ../codetracer-trace-format-nim/ct-credential-scan \
             mcr/ios-arm64/trace.ct mcr/ios-arm64/trace-portable.ct 2>&1 | tee regen-logs/verify.log
 
       - name: Upload recordings and logs
@@ -408,6 +444,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          # Nothing here pushes, and a persisted credential is one more copy
+          # of a token in the job a recording could capture.
+          persist-credentials: false
 
       - name: Generate CI token
         # codetracer-native-recorder and codetracer-visual-replay are private.
@@ -486,21 +526,36 @@ jobs:
 
           Push-Location ..\codetracer-trace-format-nim
           Invoke-Native "ct-print build" { nim c --cc:vcc -d:release --mm:arc -p:src -o:ct-print.exe src/codetracer_ct_print.nim }
+          Invoke-Native "credential scanner build" {
+            nim c --cc:vcc -d:release --hints:off -p:src -o:ct-credential-scan.exe "$env:GITHUB_WORKSPACE\.github\scripts\ct_credential_scan.nim"
+          }
+          Invoke-Native "credential scanner test build" {
+            nim c --cc:vcc -d:release --hints:off -p:src -o:test_ct_credential_scan.exe "$env:GITHUB_WORKSPACE\.github\scripts\test_ct_credential_scan.nim"
+          }
+          Invoke-Native "credential scanner test" { .\test_ct_credential_scan.exe .\ct-credential-scan.exe }
           Pop-Location
           Stop-Transcript
 
       - name: Regenerate mcr/windows-x86_64
         run: |
           $ErrorActionPreference = "Stop"
+          # Drop credential-bearing variables before recording (the bash jobs
+          # source .github/scripts/drop-credentials.sh); regenerate.ps1 also
+          # records under a cleared environment.
+          Get-ChildItem env: | Where-Object {
+            $_.Name -match '^(GIT_CONFIG_|ACTIONS_RUNTIME_TOKEN|ACTIONS_ID_TOKEN_|AWS_|MCL_S3_|ATTIC_)' -or
+            $_.Name -match '(TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|PRIVATE|_KEY|_KEY_ID)'
+          } | ForEach-Object { Remove-Item -Path "env:$($_.Name)" }
           Start-Transcript -Path regen-logs/regenerate.log
           .\mcr\windows-x86_64\regenerate.ps1
           Stop-Transcript
 
-      - name: Verify container version and ct-print
+      - name: Verify container version, ct-print and credentials
         shell: bash
         run: |
           set -o pipefail
           bash .github/scripts/verify-recordings.sh ../codetracer-trace-format-nim/ct-print.exe \
+            ../codetracer-trace-format-nim/ct-credential-scan.exe \
             mcr/windows-x86_64/trace.ct mcr/windows-x86_64/trace-portable.ct 2>&1 | tee regen-logs/verify.log
 
       - name: Upload recordings and logs
@@ -533,6 +588,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          # Nothing here pushes, and a persisted credential is one more copy
+          # of a token in the job a recording could capture.
+          persist-credentials: false
 
       - name: Set up Nix
         uses: metacraft-labs/metacraft-github-actions/setup-nix@dev
@@ -578,6 +637,7 @@ jobs:
         # (CT_LICENSE_DEV_NO_FFI), the CLR profiler or the Vulkan layer.
         run: |
           set -o pipefail
+          # shellcheck disable=SC2016 # the inner scripts expand their own variables
           {
             (cd ../codetracer-native-recorder && nix develop --command bash -c '
               set -euo pipefail
@@ -585,21 +645,30 @@ jobs:
               (cd ct_cli && nimble build)
               cp ct_interpose/libct_interpose.so ct_cli/libct_interpose.so
               cp ct_dwarf_paths/target/release/ct-dwarf-paths ct_cli/ct-dwarf-paths')
-            (cd ../codetracer-trace-format-nim && nix develop --command nimble buildCtPrint)
+            (cd ../codetracer-trace-format-nim && nix develop --command bash -c '
+              set -euo pipefail
+              nimble buildCtPrint
+              nim c -d:release --hints:off -p:src -o:ct-credential-scan "$0/.github/scripts/ct_credential_scan.nim"
+              nim c -d:release --hints:off -p:src -o:test_ct_credential_scan "$0/.github/scripts/test_ct_credential_scan.nim"
+              ./test_ct_credential_scan ./ct-credential-scan' "$GITHUB_WORKSPACE")
           } 2>&1 | tee regen-logs/build.log
 
       - name: Regenerate mcr/linux-x86_64
         run: |
           set -o pipefail
+          . .github/scripts/drop-credentials.sh || exit 1
           (cd ../codetracer-native-recorder && nix develop --command \
             bash "$GITHUB_WORKSPACE/mcr/linux-x86_64/regenerate.sh") 2>&1 | tee regen-logs/regenerate-mcr.log
 
       - name: Record codetracer's xos_hello fixture (unslimmed)
-        # Steps 1-2 of codetracer src/db-backend/tests/fixtures/xos/rebuild.sh.
+        # Steps 1-2 of codetracer src/db-backend/tests/fixtures/xos/rebuild.sh:
+        # `--attach=premain` (the emulator session refuses an instruction0
+        # recording) under `env -i`.
         # Step 3 (slimming cp0.mem with a db-backend cargo test) needs no
         # special host and is run by whoever commits the result.
         run: |
           set -o pipefail
+          . .github/scripts/drop-credentials.sh || exit 1
           out="$GITHUB_WORKSPACE/regen-out/xos"
           mkdir -p "$out"
           cp ../codetracer/src/db-backend/tests/fixtures/xos/xos_hello.c "$out/"
@@ -608,19 +677,29 @@ jobs:
             set -euo pipefail
             cd "$0"
             gcc -O0 -g -fdebug-prefix-map="$(pwd)=." -o xos_hello.elf xos_hello.c
-            "$1/ct_cli/ct_cli" record --source xos_hello.c -o xos_hello_full.ct -- ./xos_hello.elf
+            env -i PATH=/usr/bin:/bin HOME=/nonexistent LANG=C CT_LICENSE_DEV_NO_FFI=1 \
+              "$1/ct_cli/ct_cli" record --attach=premain --source xos_hello.c -o xos_hello_full.ct -- ./xos_hello.elf
           ' "$out" "$PWD/../codetracer-native-recorder") 2>&1 | tee regen-logs/record-xos.log
 
       - name: Record codetracer's native_nginx request-panel fixture
         run: |
           set -o pipefail
-          (cd ../codetracer-native-recorder && nix develop --command \
-            just record-request-panel-fixture "$GITHUB_WORKSPACE/regen-out/native_nginx") 2>&1 | tee regen-logs/record-nginx.log
+          . .github/scripts/drop-credentials.sh || exit 1
+          # Under `env -i`: nginx inherits the recorder's environment and the
+          # recording captures it. Only the dev shell's PATH (nginx, curl,
+          # just, the recorder's tools) is kept. Attach mode: the recipe's
+          # default; the fixture's consumers read its spans and events and
+          # never replay it.
+          # shellcheck disable=SC2016 # the inner script expands $PATH and $0 itself
+          (cd ../codetracer-native-recorder && nix develop --command bash -c '
+            exec env -i PATH="$PATH" HOME=/nonexistent LANG=C TZ=UTC CT_LICENSE_DEV_NO_FFI=1 \
+              just record-request-panel-fixture "$0"' "$GITHUB_WORKSPACE/regen-out/native_nginx") 2>&1 | tee regen-logs/record-nginx.log
 
-      - name: Verify container version and ct-print
+      - name: Verify container version, ct-print and credentials
         run: |
           set -o pipefail
           bash .github/scripts/verify-recordings.sh ../codetracer-trace-format-nim/ct-print \
+            ../codetracer-trace-format-nim/ct-credential-scan \
             mcr/linux-x86_64/trace.ct mcr/linux-x86_64/trace-portable.ct \
             regen-out/xos/xos_hello_full.ct regen-out/native_nginx/nginx.ct 2>&1 | tee regen-logs/verify.log
 
