@@ -14,9 +14,14 @@
 #                      submodules (the Windows job needs its env.ps1)
 #
 # Where each revision comes from:
-#   codetracer-native-recorder   codetracer's repro.lock
+#   codetracer-native-recorder   codetracer's repro.lock, or $RECORDER_REF
 #   every other sibling          codetracer's repro.lock when it pins the repo,
-#                                otherwise the recorder's own repro.lock
+#                                otherwise the recorder's own repro.lock;
+#                                with $RECORDER_REF, the recorder's own lock
+#                                first, since that is what it was built against
+#
+# $RECORDER_REF (optional): a recorder branch, tag or SHA to verify ahead of
+# codetracer's pin.  The pins file says the recorder was overridden.
 # A sibling pinned by neither lock fails the run: building it from a branch tip
 # would not be the revision anybody recorded against.
 #
@@ -118,7 +123,13 @@ trap 'rm -rf "$LOCK_DIR"' EXIT
 curl -fsSL -o "$LOCK_DIR/codetracer.lock" \
 	"https://raw.githubusercontent.com/metacraft-labs/codetracer/$CODETRACER_SHA/repro.lock"
 
-RECORDER_SHA="$(lock_rev "$LOCK_DIR/codetracer.lock" codetracer-native-recorder)"
+RECORDER_OVERRIDE="${RECORDER_REF:-}"
+if [ -n "$RECORDER_OVERRIDE" ]; then
+	RECORDER_SHA="$(resolve_ref codetracer-native-recorder "$RECORDER_OVERRIDE")"
+	echo "codetracer-native-recorder $RECORDER_OVERRIDE -> $RECORDER_SHA (overrides codetracer's pin)"
+else
+	RECORDER_SHA="$(lock_rev "$LOCK_DIR/codetracer.lock" codetracer-native-recorder)"
+fi
 if [ -z "$RECORDER_SHA" ]; then
 	echo "error: codetracer@$CODETRACER_SHA repro.lock pins no codetracer-native-recorder revision" >&2
 	exit 1
@@ -135,15 +146,25 @@ PINS="$PARENT/recorder-pins.txt"
 {
 	echo "codetracer=$CODETRACER_SHA"
 	echo "codetracer-native-recorder=$RECORDER_SHA"
+	if [ -n "$RECORDER_OVERRIDE" ]; then
+		echo "recorder-override=$RECORDER_OVERRIDE"
+	fi
 } >"$PINS"
 
 for sib in $SIBLINGS; do
 	from_ct="$(lock_rev "$LOCK_DIR/codetracer.lock" "$sib")"
 	from_rec="$(lock_rev "$RECORDER_LOCK" "$sib")"
-	if [ -n "$from_ct" ] && [ -n "$from_rec" ] && [ "$from_ct" != "$from_rec" ]; then
-		echo "note: $sib: codetracer pins $from_ct, the recorder's lock pins $from_rec; using codetracer's"
+	if [ -n "$RECORDER_OVERRIDE" ]; then
+		if [ -n "$from_ct" ] && [ -n "$from_rec" ] && [ "$from_ct" != "$from_rec" ]; then
+			echo "note: $sib: codetracer pins $from_ct, the recorder's lock pins $from_rec; using the recorder's (recorder overridden)"
+		fi
+		sha="${from_rec:-$from_ct}"
+	else
+		if [ -n "$from_ct" ] && [ -n "$from_rec" ] && [ "$from_ct" != "$from_rec" ]; then
+			echo "note: $sib: codetracer pins $from_ct, the recorder's lock pins $from_rec; using codetracer's"
+		fi
+		sha="${from_ct:-$from_rec}"
 	fi
-	sha="${from_ct:-$from_rec}"
 	if [ -z "$sha" ]; then
 		echo "error: neither codetracer's nor the recorder's repro.lock pins $sib" >&2
 		exit 1

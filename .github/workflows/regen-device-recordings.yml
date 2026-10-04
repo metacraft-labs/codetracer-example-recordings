@@ -6,7 +6,8 @@
 # recorder's siblings at the revisions the locks name
 # (`.github/scripts/provision-recorder.sh`).  It then checks every produced
 # `.ct` is container v5 / meta.dat v6 and opens with `ct-print` built from the
-# pinned codetracer-trace-format-nim (`.github/scripts/verify-recordings.sh`),
+# pinned codetracer-trace-format-nim and stores every member under a storable
+# CTFS name (`.github/scripts/verify-recordings.sh`),
 # and uploads the recordings, the pins and the logs as an artifact.
 #
 # Nothing is committed or pushed from here.  Whoever dispatched the run
@@ -44,6 +45,10 @@ on:
         description: "codetracer branch, tag or SHA whose repro.lock pins the recorder"
         required: false
         default: "agents"
+      recorder_ref:
+        description: "codetracer-native-recorder branch, tag or SHA to build instead of the one codetracer's repro.lock pins (empty: the pin)"
+        required: false
+        default: ""
       platforms:
         description: "Which platform job(s) to run"
         required: false
@@ -66,6 +71,9 @@ concurrency:
 
 env:
   CODETRACER_REF: ${{ inputs.codetracer_ref || 'agents' }}
+  # Empty unless the dispatch names a recorder revision to verify ahead of the
+  # pin (provision-recorder.sh).
+  RECORDER_REF: ${{ inputs.recorder_ref }}
   # The recordings are made by a locally built recorder with no licensing
   # library beside it; this makes ct-mcr's licence layer answer permissively
   # instead of refusing to record (ct_cli/src/ct_cli/licensing_ffi.nim).
@@ -136,6 +144,9 @@ jobs:
               nimble buildCtPrint
               nim c -d:release --hints:off -p:src -o:ct-credential-scan "$0/.github/scripts/ct_credential_scan.nim"
               nim c -d:release --hints:off -p:src -o:test_ct_credential_scan "$0/.github/scripts/test_ct_credential_scan.nim"
+              nim c -d:release --hints:off -p:src -o:ct-member-names "$0/.github/scripts/ct_member_names.nim"
+              nim c -d:release --hints:off -p:src -o:test_ct_member_names "$0/.github/scripts/test_ct_member_names.nim"
+              ./test_ct_member_names ./ct-member-names
               ./test_ct_credential_scan ./ct-credential-scan' "$GITHUB_WORKSPACE")
           } 2>&1 | tee regen-logs/build.log
 
@@ -152,6 +163,7 @@ jobs:
           set -o pipefail
           bash .github/scripts/verify-recordings.sh ../codetracer-trace-format-nim/ct-print \
             ../codetracer-trace-format-nim/ct-credential-scan \
+            ../codetracer-trace-format-nim/ct-member-names \
             mcr/macos-arm64/trace.ct mcr/macos-arm64/trace-portable.ct 2>&1 | tee regen-logs/verify.log
 
       - name: Upload recordings and logs
@@ -254,6 +266,9 @@ jobs:
             nimble buildCtPrint
             nim c -d:release --hints:off -p:src -o:ct-credential-scan "$0/.github/scripts/ct_credential_scan.nim"
             nim c -d:release --hints:off -p:src -o:test_ct_credential_scan "$0/.github/scripts/test_ct_credential_scan.nim"
+            nim c -d:release --hints:off -p:src -o:ct-member-names "$0/.github/scripts/ct_member_names.nim"
+            nim c -d:release --hints:off -p:src -o:test_ct_member_names "$0/.github/scripts/test_ct_member_names.nim"
+            ./test_ct_member_names ./ct-member-names
             ./test_ct_credential_scan ./ct-credential-scan' "$GITHUB_WORKSPACE") 2>&1 | tee regen-logs/build.log
 
       - name: Regenerate mcr/macos-arm64/emulator
@@ -272,6 +287,7 @@ jobs:
           set -o pipefail
           bash .github/scripts/verify-recordings.sh ../codetracer-trace-format-nim/ct-print \
             ../codetracer-trace-format-nim/ct-credential-scan \
+            ../codetracer-trace-format-nim/ct-member-names \
             mcr/macos-arm64/emulator/eme5_inject/one_write.ct \
             mcr/macos-arm64/emulator/eme5_predyld/one_write.ct \
             mcr/macos-arm64/emulator/eme_m9c_2006/one_write.ct 2>&1 | tee regen-logs/verify.log
@@ -393,6 +409,9 @@ jobs:
               nimble buildCtPrint
               nim c -d:release --hints:off -p:src -o:ct-credential-scan "$0/.github/scripts/ct_credential_scan.nim"
               nim c -d:release --hints:off -p:src -o:test_ct_credential_scan "$0/.github/scripts/test_ct_credential_scan.nim"
+              nim c -d:release --hints:off -p:src -o:ct-member-names "$0/.github/scripts/ct_member_names.nim"
+              nim c -d:release --hints:off -p:src -o:test_ct_member_names "$0/.github/scripts/test_ct_member_names.nim"
+              ./test_ct_member_names ./ct-member-names
               ./test_ct_credential_scan ./ct-credential-scan' "$GITHUB_WORKSPACE")
           } 2>&1 | tee regen-logs/build.log
 
@@ -416,6 +435,7 @@ jobs:
           set -o pipefail
           bash .github/scripts/verify-recordings.sh ../codetracer-trace-format-nim/ct-print \
             ../codetracer-trace-format-nim/ct-credential-scan \
+            ../codetracer-trace-format-nim/ct-member-names \
             mcr/ios-arm64/trace.ct mcr/ios-arm64/trace-portable.ct 2>&1 | tee regen-logs/verify.log
 
       - name: Upload recordings and logs
@@ -533,6 +553,13 @@ jobs:
             nim c --cc:vcc -d:release --hints:off -p:src -o:test_ct_credential_scan.exe "$env:GITHUB_WORKSPACE\.github\scripts\test_ct_credential_scan.nim"
           }
           Invoke-Native "credential scanner test" { .\test_ct_credential_scan.exe .\ct-credential-scan.exe }
+          Invoke-Native "member-name checker build" {
+            nim c --cc:vcc -d:release --hints:off -p:src -o:ct-member-names.exe "$env:GITHUB_WORKSPACE\.github\scripts\ct_member_names.nim"
+          }
+          Invoke-Native "member-name checker test build" {
+            nim c --cc:vcc -d:release --hints:off -p:src -o:test_ct_member_names.exe "$env:GITHUB_WORKSPACE\.github\scripts\test_ct_member_names.nim"
+          }
+          Invoke-Native "member-name checker test" { .\test_ct_member_names.exe .\ct-member-names.exe }
           Pop-Location
           Stop-Transcript
 
@@ -556,6 +583,7 @@ jobs:
           set -o pipefail
           bash .github/scripts/verify-recordings.sh ../codetracer-trace-format-nim/ct-print.exe \
             ../codetracer-trace-format-nim/ct-credential-scan.exe \
+            ../codetracer-trace-format-nim/ct-member-names.exe \
             mcr/windows-x86_64/trace.ct mcr/windows-x86_64/trace-portable.ct 2>&1 | tee regen-logs/verify.log
 
       - name: Upload recordings and logs
@@ -650,6 +678,9 @@ jobs:
               nimble buildCtPrint
               nim c -d:release --hints:off -p:src -o:ct-credential-scan "$0/.github/scripts/ct_credential_scan.nim"
               nim c -d:release --hints:off -p:src -o:test_ct_credential_scan "$0/.github/scripts/test_ct_credential_scan.nim"
+              nim c -d:release --hints:off -p:src -o:ct-member-names "$0/.github/scripts/ct_member_names.nim"
+              nim c -d:release --hints:off -p:src -o:test_ct_member_names "$0/.github/scripts/test_ct_member_names.nim"
+              ./test_ct_member_names ./ct-member-names
               ./test_ct_credential_scan ./ct-credential-scan' "$GITHUB_WORKSPACE")
           } 2>&1 | tee regen-logs/build.log
 
@@ -702,6 +733,7 @@ jobs:
           set -o pipefail
           bash .github/scripts/verify-recordings.sh ../codetracer-trace-format-nim/ct-print \
             ../codetracer-trace-format-nim/ct-credential-scan \
+            ../codetracer-trace-format-nim/ct-member-names \
             mcr/linux-x86_64/trace.ct mcr/linux-x86_64/trace-portable.ct \
             regen-out/xos/xos_hello_full.ct regen-out/native_nginx/nginx.ct 2>&1 | tee regen-logs/verify.log
 
