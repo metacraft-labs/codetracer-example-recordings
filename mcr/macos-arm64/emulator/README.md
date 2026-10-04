@@ -42,6 +42,18 @@ never bundled here, lives under `~/mcr-hwtrace/eme_ete_2006/`.
 | `<name>.ct.wpband.N` | M9c whole-program svc bands. |
 | `<name>.ct.arc4buf` | arc4/CPRNG capture buffer VAs. |
 
+**The `.ct` files were converted, not re-recorded, to container version 5.**
+They were written as CTFS version 4; since codetracer-trace-format-nim
+`86ca226` (2026-10-01) every reader refuses any version but 5. Re-recording
+needs the SIP-disabled Mac, so on 2026-10-04 each container was rewritten by
+[`tools/ctfs-v4-to-v5/`](../../../tools/ctfs-v4-to-v5/): every member read with
+the version-4 walk and written unchanged, in the same order, by the current
+writer. The member bytes — including `meta.dat` and each event stream, with the
+member formats they were recorded in — are identical to the recording's; only
+the container's block layout changed. The numbers in `<name>.info.txt` and
+`<name>.events.txt` therefore still describe these files. Sidecars were not
+touched.
+
 Sidecars are per-fixture — a directory only carries the ones its recording
 configuration produces. Some sidecars are read off disk by the replay path
 (`.arc4buf`, `.loadtrap`); the rest are provenance.

@@ -9,3 +9,7 @@ result-man
 
 # Direnv
 .direnv/
+
+# tools/ctfs-v4-to-v5 build outputs
+tools/ctfs-v4-to-v5/ctfs_v4_to_v5
+tools/ctfs-v4-to-v5/test_ctfs_v4_to_v5

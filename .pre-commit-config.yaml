@@ -69,6 +69,12 @@
 # serve as evidence: that it is byte-for-byte what the recorder wrote. So those
 # trees are out of scope for every hook.
 #
+# `tools/ctfs-v4-to-v5/testdata/` is excluded for the same reason. It holds one
+# recording, the version-4 `eme5/null_main.ct` as recorded, which the
+# converter's test reads; editorconfig-checker reads it as text and fails it.
+# The exclude names that one directory, not `tools/`, so the converter's
+# source stays gated.
+#
 # `programs/` is NOT excluded. Those are the hand-written source programs the
 # recordings are made FROM, so they are ordinary source and are gated normally,
 # as are `README.md`, `FIXTURE_IDS.md`, `.github/workflows/*.yml` and the
@@ -90,6 +96,7 @@ exclude: |
   (?x)^(
     mcr/
     |(c|go|javascript|nim|python|ruby|rust)/flow_test/
+    |tools/ctfs-v4-to-v5/testdata/
   )
 
 repos:
