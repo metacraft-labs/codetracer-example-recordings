@@ -17,6 +17,9 @@
 #   macos-arm64            mcr/macos-arm64/{trace,trace-portable}.ct     Apple Silicon Mac
 #   macos-arm64-emulator   mcr/macos-arm64/emulator/{eme5_inject,       Apple Silicon Mac with SIP
 #                          eme5_predyld,eme_m9c_2006}/one_write.ct      disabled; skipped otherwise
+#   macos-arm64-member-   nothing committed: records a debuggable       Apple Silicon Mac
+#     names                hello-world with --attach=instruction0 and
+#                          checks its stage-0 member names
 #   ios-arm64              mcr/ios-arm64/{trace,trace-portable}.ct       Mac with Xcode + an iOS
 #                                                                       simulator; skipped otherwise
 #   windows-x86_64         mcr/windows-x86_64/{trace,trace-portable}.ct  Windows x64 + VS Build Tools
@@ -58,6 +61,7 @@ on:
           - all
           - macos-arm64
           - macos-arm64-emulator
+          - macos-arm64-member-names
           - ios-arm64
           - windows-x86_64
           - linux-x86_64
@@ -191,6 +195,124 @@ jobs:
           region: ${{ vars.MCL_S3_ARTIFACTS_REGION }}
           access-key-id: ${{ secrets.MCL_S3_ARTIFACTS_ACCESS_KEY_ID }}
           secret-access-key: ${{ secrets.MCL_S3_ARTIFACTS_SECRET_ACCESS_KEY }}
+
+  macos-arm64-member-names:
+    # Records a debuggable hello-world with `--attach=instruction0` (the SIP-on
+    # parent-as-debugger path, whose injected recorder writes the stage-0
+    # `tstart.*` members) and checks every member has a storable CTFS name.
+    # Nothing it records is a fixture: it verifies the recorder's macOS writer
+    # on a runner where the emulator fixtures cannot be recorded (SIP on).
+    if: inputs.platforms == 'all' || inputs.platforms == 'macos-arm64-member-names'
+    runs-on: ${{ vars.CI_RUNNER_MODE == 'github-hosted' && 'macos-15' || fromJSON('["self-hosted","macos","arm64"]') }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Put the system tool directories on PATH
+        # The self-hosted macOS runners start jobs with a Nix-only PATH, which
+        # has no grep, csrutil, xcrun or codesign.
+        run: echo "PATH=$PATH:/usr/bin:/bin:/usr/sbin:/sbin" >>"$GITHUB_ENV"
+
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          # Nothing here pushes, and a persisted credential is one more copy
+          # of a token in the job a recording could capture.
+          persist-credentials: false
+
+      - name: Set up Nix
+        uses: metacraft-labs/metacraft-github-actions/setup-nix@dev
+        with:
+          gh-token: ${{ github.token }}
+          substituters: ${{ vars.ATTIC_SUBSTITUTER }}
+          trusted-public-keys: ${{ vars.ATTIC_TRUSTED_PUBLIC_KEY }}
+
+      - name: Generate CI token
+        # codetracer-native-recorder and codetracer-visual-replay are private.
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.CI_TOKEN_PROVIDER_APP_ID }}
+          private-key: ${{ secrets.CI_TOKEN_PROVIDER_PRIVATE_KEY }}
+          owner: metacraft-labs
+
+      - name: Provision the pinned recorder and its siblings
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          mkdir -p regen-logs
+          bash .github/scripts/provision-recorder.sh "$CODETRACER_REF" .. 2>&1 | tee regen-logs/provision.log
+          cp ../recorder-pins.txt regen-logs/
+
+      - name: Build ct-mcr, its interpose library and the checkers
+        run: |
+          set -o pipefail
+          # shellcheck disable=SC2016 # the inner scripts expand their own variables
+          {
+            (cd ../codetracer-native-recorder && nix develop --command bash -c '
+              set -euo pipefail
+              just build-interpose
+              cd ct_cli
+              nimble build
+              codesign -s - -f --entitlements record-entitlements.plist ct_cli
+              cp ../ct_interpose/libct_interpose.dylib .')
+            (cd ../codetracer-trace-format-nim && nix develop --command bash -c '
+              set -euo pipefail
+              nimble buildCtPrint
+              nim c -d:release --hints:off -p:src -o:ct-credential-scan "$0/.github/scripts/ct_credential_scan.nim"
+              nim c -d:release --hints:off -p:src -o:ct-member-names "$0/.github/scripts/ct_member_names.nim"
+              nim c -d:release --hints:off -p:src -o:test_ct_member_names "$0/.github/scripts/test_ct_member_names.nim"
+              ./test_ct_member_names ./ct-member-names' "$GITHUB_WORKSPACE")
+          } 2>&1 | tee regen-logs/build.log
+
+      - name: Record a debuggable hello-world from its first instruction
+        run: |
+          set -o pipefail
+          . .github/scripts/drop-credentials.sh || exit 1
+          mkdir -p regen-out/i0
+          printf '#include <stdio.h>\nint main(void){ puts("hello"); return 0; }\n' >regen-out/i0/hello.c
+          printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>' \
+            '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
+            '<plist version="1.0"><dict><key>com.apple.security.get-task-allow</key><true/></dict></plist>' \
+            >regen-out/i0/gta.plist
+          nix develop ../codetracer-native-recorder --command \
+            cc -O0 -g -o regen-out/i0/hello regen-out/i0/hello.c
+          codesign -s - -f --entitlements regen-out/i0/gta.plist regen-out/i0/hello
+          recorder="$(cd ../codetracer-native-recorder && pwd)"
+          env -i PATH=/usr/bin:/bin HOME=/nonexistent LANG=C TZ=UTC \
+            CT_LICENSE_DEV_NO_FFI=1 CT_NATIVE_RECORDER_ROOT="$recorder" \
+            "$recorder/ct_cli/ct_cli" record --attach=instruction0 \
+            -o regen-out/i0/hello.ct -- regen-out/i0/hello 2>&1 | tee regen-logs/record-i0.log
+
+      - name: Verify the recording and its stage-0 member names
+        run: |
+          set -o pipefail
+          bash .github/scripts/verify-recordings.sh ../codetracer-trace-format-nim/ct-print \
+            ../codetracer-trace-format-nim/ct-credential-scan \
+            ../codetracer-trace-format-nim/ct-member-names \
+            regen-out/i0/hello.ct 2>&1 | tee regen-logs/verify.log
+          listing="$(../codetracer-trace-format-nim/ct-member-names regen-out/i0/hello.ct)"
+          missing=""
+          for want in tstart.regs tstart.mem; do
+            case "$listing" in *"\"$want\""*) ;; *) missing="$missing $want" ;; esac
+          done
+          if [ -n "$missing" ]; then
+            echo "::error title=Stage-0 members missing::the instruction0 recording has no$missing member: $listing"
+            exit 1
+          fi
+          echo "stage-0 members present under their storable names"
+
+      - name: Upload the recording and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-macos-arm64-member-names
+          path: |
+            regen-out/i0/
+            regen-logs/
+          if-no-files-found: warn
+          retention-days: 3
 
   macos-arm64-emulator:
     if: inputs.platforms == 'all' || inputs.platforms == 'macos-arm64-emulator'
