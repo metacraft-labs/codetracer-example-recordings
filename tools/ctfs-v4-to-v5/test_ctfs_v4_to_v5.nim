@@ -11,8 +11,13 @@
 ## read back through the CURRENT reader (the one the suites use) and compared by
 ## length and sha256, in root-slot order.
 ##
-## The same table is then checked against the committed, converted fixture, so
-## a later edit to that file that changes any member fails here too.
+## `meta_v3_to_v6.nim` is tested on the same recording: its `meta.dat` must be
+## accepted by the current `readMetaDat` with the version-3 fields (pinned
+## below), `paths.dat` must hold the version-3 path list, every other member
+## must still match the table, and the member renames of recorder `e16f18457`
+## must map each old lossy key to its storable name.  The committed fixture
+## must be exactly v4 -> v5 -> meta v6 of the kept original, byte for byte, so
+## a later edit to that file fails here too.
 ##
 ## Run:  nim c -r --path:<codetracer-trace-format-nim>/src test_ctfs_v4_to_v5.nim
 ## (needs nimcrypto, which codetracer-trace-format-nim's environment carries).
@@ -20,10 +25,12 @@
 when defined(nimPreviewSlimSystem):
   import std/[syncio, assertions]
 
-import std/[os, strutils, unittest]
+import std/[options, os, strutils, unittest]
 import results, nimcrypto/sha2
 import codetracer_ctfs/[types, base40, container]
+import codetracer_trace_writer/[meta_dat, interning_table]
 import ./ctfs_v4_to_v5
+import ./meta_v3_to_v6
 
 const
   here = currentSourcePath().parentDir
@@ -94,8 +101,56 @@ suite "ctfs v4 -> v5":
     if output.isOk:
       checkMembers(output.get)
 
-  test "the committed fixture is that conversion":
-    checkMembers(readCtfsFromFile(convertedFixture).get)
+  test "meta.dat v3 -> v6 keeps every field and moves the path list":
+    let v5 = convertV4ToV5(readCtfsFromFile(v4Input).get).get
+    let up = upgradeMetaDatV3(v5)
+    check up.isOk
+    if up.isOk:
+      let data = up.get
+      let meta = readMetaDat(readInternalFile(data, "meta.dat", 4096, 128).get)
+      check meta.isOk
+      if meta.isOk:
+        check meta.get.version == 6
+        check meta.get.recordingId == "019f2f59-f478-7c60-800f-91c100c55cca"
+        check meta.get.program == "/tmp/eme5rec/null_main"
+        check meta.get.recorderId == "mcr-interpose"
+        check meta.get.mcrFields.isSome
+      let paths = initInterningTableReader(data, "paths", 4096, 128)
+      check paths.isOk
+      if paths.isOk:
+        check paths.get.count == 1
+        check paths.get.readById(0).get ==
+          "ct_emulator/tests/fixtures/eme5/null_main.c"
+      for (name, length, digest) in expected:
+        if name == "meta.dat": continue
+        let got = readInternalFile(data, name, 4096, 128)
+        check got.isOk
+        if got.isOk:
+          check got.get.len == length
+          check $sha256.digest(got.get) == digest
+      # It is not version 3 any more: a second upgrade is refused by name.
+      let again = upgradeMetaDatV3(data)
+      check again.isErr
+      check "not 3" in again.error
+
+  test "the e16f18457 renames map each old lossy key to its storable name":
+    for (old, new) in MemberRenames:
+      check not base40Encodable(old)
+      check base40Encodable(new)
+      check renamedMember(base40Encode(old)) == new
+      check renamedMember(base40Encode(new)) == ""
+    var keys: seq[uint64]
+    for (old, _) in MemberRenames: keys.add base40Encode(old)
+    for i in 0 ..< keys.len:
+      for j in i + 1 ..< keys.len:
+        check keys[i] != keys[j]
+
+  test "the committed fixture is exactly that conversion":
+    let v5 = convertV4ToV5(readCtfsFromFile(v4Input).get).get
+    let up = upgradeMetaDatV3(v5)
+    check up.isOk
+    if up.isOk:
+      check readCtfsFromFile(convertedFixture).get == up.get
 
   test "a container that is not version 4 is refused, naming its version":
     let v5 = convertV4ToV5(readCtfsFromFile(v4Input).get).get

@@ -24,5 +24,17 @@ nim c -d:release --path:$TF ctfs_v4_to_v5.nim
 ./ctfs_v4_to_v5 in.ct out.ct                  # in == out converts in place
 ```
 
-A new recording is written as version 5 by the recorder. Do not use this
-tool for one.
+`meta_v3_to_v6.nim` is the second step for the same recordings. It upgrades a
+container's `meta.dat` from schema 3 to 6, moving the path list into
+`paths.dat`, and applies recorder `e16f18457`'s member renames. Every
+derivation is described in its header, and the result is verified through the
+current readers. The test runs both steps over the kept original and requires
+the committed fixture to be exactly the result.
+
+```sh
+nim c -d:release --path:$TF meta_v3_to_v6.nim
+./meta_v3_to_v6 in.ct out.ct
+```
+
+A new recording is written as version 5 by the recorder. Do not use these
+tools for one.

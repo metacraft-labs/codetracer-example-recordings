@@ -54,6 +54,18 @@ the container's block layout changed. The numbers in `<name>.info.txt` and
 `<name>.events.txt` therefore still describe these files. Sidecars were not
 touched.
 
+**Their `meta.dat` was then upgraded from schema 3 to 6** (2026-10-05, owner
+decision: convert, with the reader kept strict), by
+[`tools/ctfs-v4-to-v5/meta_v3_to_v6.nim`](../../../tools/ctfs-v4-to-v5/meta_v3_to_v6.nim).
+Every field the newer schemas add is derived from the recording: `flags_ext`
+is 0 (its only bit postdates v3), and the v3 path list moves, in path-id order,
+into `paths.dat`. v4's change to line-only step positions touches step
+streams, which these native traces do not have, and the tool refuses a
+container that has one. In the same pass the seed and sidecar members stored
+under the lossy keys of `t_start.*` / `cp0.predyld.syscalls` are renamed to
+the storable names recorder `e16f18457` gave them (`tstart.mem`, ...). Member
+bytes are unchanged.
+
 Sidecars are per-fixture — a directory only carries the ones its recording
 configuration produces. Some sidecars are read off disk by the replay path
 (`.arc4buf`, `.loadtrap`); the rest are provenance.
