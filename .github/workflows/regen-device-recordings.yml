@@ -15,9 +15,9 @@
 #   job                    fixtures                                     needs
 #   macos-arm64            mcr/macos-arm64/{trace,trace-portable}.ct     Apple Silicon Mac
 #   macos-arm64-emulator   mcr/macos-arm64/emulator/{eme5_inject,       Apple Silicon Mac with SIP
-#                          eme5_predyld,eme_m9c_2006}/one_write.ct      disabled; skipped otherwise
+#                          eme5_predyld,eme_m9c_2006}/one_write.ct      disabled; fails otherwise
 #   ios-arm64              mcr/ios-arm64/{trace,trace-portable}.ct       Mac with Xcode + an iOS
-#                                                                       simulator; skipped otherwise
+#                                                                       simulator; fails otherwise
 #   windows-x86_64         mcr/windows-x86_64/{trace,trace-portable}.ct  Windows x64 + VS Build Tools
 #
 # Not covered: `mcr/android-arm64` needs a USB-connected phone
@@ -25,10 +25,9 @@
 # `mcr/macos-arm64/emulator/eme5` has no re-record driver (see
 # mcr/macos-arm64/emulator/regenerate.sh).
 #
-# The jobs skip themselves, with a notice, when the runner lacks a
-# precondition they can check in seconds (SIP, Xcode), before building
-# anything, so they do not hold a scarce runner for a recording they cannot
-# make.
+# Requested jobs fail explicitly when the runner lacks a required capability
+# (SIP, Xcode), before building anything. An unavailable platform is a pending
+# qualification gate, not a successful run without recordings.
 
 name: "Regenerate device recordings"
 
@@ -178,17 +177,16 @@ jobs:
       - name: Check that SIP is disabled
         id: pre
         # The injected record path these fixtures come from needs SIP off.
-        # No runner label states SIP, so ask the host, and skip rather than
-        # fail when it says enabled: that is a property of the runner, not a
-        # defect in the run.
+        # A missing required host capability must fail the requested platform
+        # gate; it cannot qualify regeneration by omitting the recorder.
         run: |
           status="$(csrutil status 2>&1 || true)"
           echo "$status"
           if printf '%s' "$status" | grep -qi disabled; then
             echo "ok=true" >>"$GITHUB_OUTPUT"
           else
-            echo "::notice title=macos-arm64-emulator skipped::SIP is enabled on $RUNNER_NAME ($status). The emulator fixtures need an Apple Silicon Mac with SIP disabled."
-            echo "ok=false" >>"$GITHUB_OUTPUT"
+            echo "::error title=macos-arm64-emulator prerequisite unavailable::$RUNNER_NAME does not meet this fixture mechanism's SIP-disabled requirement ($status)."
+            exit 1
           fi
 
       - name: Checkout
@@ -275,8 +273,8 @@ jobs:
         # The fixture is a CTSP recording of a program running in the iOS
         # simulator, so it needs a full Xcode (not just the command-line
         # tools) with the iOS simulator SDK and a simulator runtime.  No runner
-        # label states that, so ask the host, and skip rather than fail when
-        # it is missing.
+        # label states that, so ask the host and fail the requested platform
+        # gate when its genuine runtime is unavailable.
         run: |
           ok=true
           echo "xcode-select -p: $(xcode-select -p 2>&1 || true)"
@@ -306,7 +304,8 @@ jobs:
             printf '%s\n' "$runtimes"
           fi
           if ! $ok; then
-            echo "::notice title=ios-arm64 skipped::$RUNNER_NAME cannot run the iOS simulator: it needs Xcode with the iOS simulator SDK, and CoreSimulator usable by the runner account (see the probe output)."
+            echo "::error title=ios-arm64 prerequisite unavailable::$RUNNER_NAME cannot run the iOS simulator: it needs Xcode with the iOS simulator SDK, and CoreSimulator usable by the runner account (see the probe output)."
+            exit 1
           fi
           echo "ok=$ok" >>"$GITHUB_OUTPUT"
 
