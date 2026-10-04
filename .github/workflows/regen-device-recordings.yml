@@ -203,7 +203,9 @@ jobs:
     # Nothing it records is a fixture: it verifies the recorder's macOS writer
     # on a runner where the emulator fixtures cannot be recorded (SIP on).
     if: inputs.platforms == 'all' || inputs.platforms == 'macos-arm64-member-names'
-    runs-on: ${{ vars.CI_RUNNER_MODE == 'github-hosted' && 'macos-15' || fromJSON('["self-hosted","macos","arm64"]') }}
+    # `nix-darwin` selects the m3-mcl-* machines; the bare macOS labels also
+    # match an ephemeral pool whose runners were lost mid-build twice.
+    runs-on: ${{ vars.CI_RUNNER_MODE == 'github-hosted' && 'macos-15' || fromJSON('["self-hosted","macos","arm64","nix-darwin"]') }}
     timeout-minutes: 60
     defaults:
       run:
