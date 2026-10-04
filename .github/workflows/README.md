@@ -41,9 +41,14 @@ emulator), `mcr/ios-arm64` and `mcr/windows-x86_64` with the recorder
 **codetracer pins**: the `codetracer-native-recorder` revision in codetracer's
 committed `repro.lock` at the `codetracer_ref` input (default `agents`), with
 its siblings at the revisions the locks name
-(`.github/scripts/provision-recorder.sh`). Each job checks what it produced is
-container v5 / `meta.dat` v6 and opens with `ct-print` from the pinned
-`codetracer-trace-format-nim` (`.github/scripts/verify-recordings.sh`), and
+(`.github/scripts/provision-recorder.sh`). The optional `recorder_ref` input
+builds a named recorder revision instead, with its siblings from the
+recorder's own lock, to verify it on every platform before codetracer pins
+it; the pins file then says so. Each job checks what it produced is
+container v5 / `meta.dat` v6, opens with `ct-print` from the pinned
+`codetracer-trace-format-nim`, and stores every member under a storable CTFS
+name (`.github/scripts/ct_member_names.nim`: at most 12 characters from
+`\0 0-9 a-z . / -`) (`.github/scripts/verify-recordings.sh`), and
 uploads the recordings, the pins and the logs as an artifact. It commits
 nothing and opens no pull request: the person who dispatched it downloads the
 artifact, re-verifies it and commits it.
