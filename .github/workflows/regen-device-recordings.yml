@@ -732,6 +732,19 @@ jobs:
           Pop-Location
           Copy-Item ct_interpose\ct_interpose_stage0.dll ct_cli\ct_interpose_stage0.dll
           Copy-Item ct_interpose\ct_interpose_stage0.map ct_cli\ct_interpose_stage0.map
+          # The stage-0 bootstrap stub ct_mcr writes into the suspended child:
+          # stub.bin + stub_layout.txt, looked up beside ct_interpose.dll.
+          # Steps 1-3 of the recorder's bootstrap_stub_windows\build.ps1
+          # (the prototype steps after them are not needed to record).
+          Push-Location ct_interpose\src\ct_interpose\bootstrap_stub_windows
+          Invoke-Native "stub assembly" { ml64 /nologo /c /Fo stub.obj stub.asm }
+          Invoke-Native "stub extractor build" {
+            cl /nologo /W3 /O2 stub_extractor.c stub.obj /Fe:stub_extractor.exe /link /SUBSYSTEM:CONSOLE
+          }
+          Invoke-Native "stub extraction" { .\stub_extractor.exe stub.bin stub_layout.txt }
+          Pop-Location
+          Copy-Item ct_interpose\src\ct_interpose\bootstrap_stub_windows\stub.bin ct_cli\stub.bin
+          Copy-Item ct_interpose\src\ct_interpose\bootstrap_stub_windows\stub_layout.txt ct_cli\stub_layout.txt
           Pop-Location
 
           Push-Location ..\codetracer-trace-format-nim
