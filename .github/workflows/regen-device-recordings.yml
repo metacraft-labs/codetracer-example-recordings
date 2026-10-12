@@ -661,8 +661,23 @@ jobs:
 
           Push-Location ..\codetracer-native-recorder
           Invoke-Native "ct_mcr.exe build" { nim c --cc:vcc -d:release -o:ct_cli/ct_mcr.exe ct_cli/src/ct_cli.nim }
+          # The recorder's `build-interpose-windows-release` recipe, step for
+          # step: the DLL links the MASM thunks it assembles first, and its
+          # allocator is routed to the SBI arena.
+          Invoke-Native "interpose thunk assembly" {
+            ml64 /nologo /c /Foct_interpose\instrumentation_callback_thunk_windows.obj `
+              ct_interpose\src\ct_interpose\instrumentation_callback_thunk_windows.asm
+          }
           Invoke-Native "ct_interpose.dll build" {
-            nim c --app:lib --cc:vcc --mm:none --stackTrace:off --lineTrace:off -d:release `
+            nim c --app:lib --cc:vcc --mm:none -d:release `
+              --define:useMalloc --define:ctSbi4Available `
+              --stackTrace:off --lineTrace:off `
+              --passL:ct_interpose\instrumentation_callback_thunk_windows.obj `
+              --passL:/link `
+              --passL:/ALTERNATENAME:malloc=ct_sbi_malloc `
+              --passL:/ALTERNATENAME:calloc=ct_sbi_calloc `
+              --passL:/ALTERNATENAME:realloc=ct_sbi_realloc `
+              --passL:/ALTERNATENAME:free=ct_sbi_free `
               -o:ct_interpose/ct_interpose.dll ct_interpose/src/ct_interpose/library_init_windows.nim
           }
           Copy-Item ct_interpose\ct_interpose.dll ct_cli\ct_interpose.dll
