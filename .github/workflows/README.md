@@ -79,10 +79,13 @@ never source code or personal data. After `verify-recordings.sh` the job runs:
 - `.github/scripts/ct_leak_scan.nim`: every member read through the
   trace-format reader (so a zstd frame whose blocks are not contiguous is
   reassembled), every member that is itself a container, every zstd frame, and
-  the container bytes no member owns, in ASCII and UTF-16LE. It refuses a home
-  directory other than an allowed CI account's, the scanning account's own
+  the container bytes no member owns, and the seam between successive frames
+  (the recorder seals frames at byte counts, so a path can straddle two), in
+  ASCII and UTF-16LE. It refuses a home directory other than an allowed CI
+  account's (in any script), an e-mail address, the scanning account's own
   identity when that is a personal account, and source text other than the
-  fixture program's own (`programs/ct_fixture_prog.c` is public). It reports,
+  fixture program's own (`programs/ct_fixture_prog.c` is public); its report
+  prints none of them. It reports,
   without refusing, CodeView PDB paths, source-file names (the recorder DLLs'
   assertion messages name their modules) and bytes it could not decode.
   `test_ct_leak_scan.nim` plants each shape and checks the scan refuses it.

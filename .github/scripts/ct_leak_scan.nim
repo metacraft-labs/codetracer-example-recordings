@@ -16,6 +16,9 @@
 ##                        the built-in ones: Public, Default, Default User,
 ##                        All Users, runner (GARM's ephemeral Windows runners)
 ##                        and runneradmin (GitHub-hosted Windows runners)
+##   --allow-email ADDR   an e-mail address that may be published (one a
+##                        public file carries, e.g. glibc's locale data names
+##                        its author); it is reported, not refused
 ##   --forbid VALUE       a literal that must not appear
 ##   --report VALUE       a literal that may appear; its count is reported
 ##   --allow-source FILE  a source file whose text may appear (a fixture
@@ -38,7 +41,13 @@
 ##     this is the gap the recorder's corpus_leak_scan has;
 ##   * every member that is itself a CTFS container, recursively;
 ##   * every zstd frame found in any of the above, decompressed, and the frames
-##     inside it, to a depth of 3.
+##     inside it, to a depth of 3; a decompressed frame that is itself a CTFS
+##     container is walked as one;
+##   * the seam between each two successive frames of a buffer (the last 1 KiB
+##     of the content before it and the first 1 KiB after it), because the
+##     recorder seals a stream's frames at byte counts, not at record
+##     boundaries, so one path can begin in one frame and end in the next.
+##     Only a match that crosses the seam counts there.
 ## Matching is case-insensitive, in ASCII and in UTF-16LE (the Windows
 ## environment block, registry values and NT paths are UTF-16LE).
 ##
@@ -46,7 +55,10 @@
 ##   home-dir      `\Users\<name>`, `/Users/<name>` or `/home/<name>` whose
 ##                 <name> is not an allowed one or a placeholder (`%USERNAME%`,
 ##                 `<user>`, `$USER`, `*`). Catches `C:\Users\x`, `C:/Users/x`,
-##                 `\Device\HarddiskVolume5\Users\x`, `\??\C:\Users\x`.
+##                 `\Device\HarddiskVolume5\Users\x`, `\??\C:\Users\x`, and
+##                 a name with non-ASCII characters in either encoding.
+##   e-mail        an e-mail address (ASCII or UTF-16LE), e.g. a git identity
+##                 in an environment block.
 ##   forbidden     a `--forbid` literal, or the scanning account's identity
 ##                 (below).
 ##   source-text   a line that only source code has: `#include <`, `#define `,
@@ -59,7 +71,7 @@
 ##   allowed home directories and placeholders; `--report` literals; CodeView
 ##   (RSDS) PDB paths; embedded PDBs; every distinct source-file path
 ##   (`*.nim`, `*.c`, `*.h`, `*.cpp`, `*.rs`, `*.asm`, ...); text of an
-##   `--allow-source` file; e-mail addresses; and, per member, the bytes the
+##   `--allow-source` file; and, per member, the bytes the
 ##   scan could not decode (high-entropy 4 KiB windows outside every zstd frame:
 ##   a codec this tool does not know would hide text there).
 ##
@@ -71,8 +83,9 @@
 ## are reported. So a developer who scans a local recording is refused on
 ## their own name, and a CI job sees how often the runner's identity appears.
 ##
-## THE REPORT NEVER PRINTS A REFUSED NAME. A refused home-directory name or
-## forbidden literal is shown as its first character and its length, so the
+## THE REPORT NEVER PRINTS WHAT IT REFUSES. A refused home-directory name,
+## forbidden literal or e-mail address is shown as its first character and
+## its length, and refused source text as its marker and its length, so the
 ## log of a public CI job does not republish what it caught.
 ##
 ## Build against codetracer-trace-format-nim:
@@ -90,6 +103,7 @@ const
   MaxDecompressed = 1 shl 30 ## refuse to inflate a single frame past 1 GiB
   MaxFrameDepth = 3
   MaxContainerDepth = 4
+  SeamBytes = 1024 ## content kept on each side of a frame seam
   BuiltinAllowedUsers = ["public", "default", "default user", "all users",
                          "runner", "runneradmin"]
   MsfMagic = "Microsoft C/C++ MSF 7.00\r\n\x1aDS"
@@ -121,6 +135,7 @@ type
 
   Rules = object
     allowedUsers: HashSet[string]
+    allowedEmails: HashSet[string]
     forbid: seq[tuple[label, value: string]]
     report: seq[tuple[label, value: string]]
     allowedSources: seq[tuple[path, text: string]]
@@ -134,6 +149,8 @@ type
     buffers: int
     decodedBytes: int64
     dumpIndex: int
+    seam: int           ## > 0 while a frame seam is scanned: only a match
+                        ## that crosses this offset counts
 
 proc toStr(data: openArray[byte]): string =
   result = newString(data.len)
@@ -199,6 +216,12 @@ proc maskText(s: string): string =
       lowered = result.toLowerAscii
       p = lowered.find(v, p + red.len)
 
+proc crosses(scan: Scan, a, b: int): bool =
+  ## Whether the match spanning [a, b) counts: always, except in a seam
+  ## buffer, where a match that does not cross the seam was already counted
+  ## in the frame that holds it whole.
+  scan.seam <= 0 or (a < scan.seam and b > scan.seam)
+
 proc add(scan: var Scan, severity: Severity, rule, shown, where: string) =
   let shown = maskText(shown)
   let where = maskText(where)
@@ -223,7 +246,10 @@ proc unitAt(data: openArray[byte], pos, width: int): int =
 proc readSegment(data: openArray[byte], pos, width: int,
                  stop: set[char], maxLen = 64): string =
   ## Code units from `pos` up to a stop character, a control character or
-  ## `maxLen`; non-ASCII UTF-16 units are kept as `?`.
+  ## `maxLen`; a non-ASCII unit (UTF-16LE, or a UTF-8 / code-page byte) is
+  ## kept as `#`, so a name written in another script is still a name. (As
+  ## `?` it read as a placeholder, and in ASCII the segment stopped there, so
+  ## a non-ASCII user name was never refused.)
   var p = pos
   while result.len < maxLen:
     let u = unitAt(data, p, width)
@@ -231,10 +257,8 @@ proc readSegment(data: openArray[byte], pos, width: int,
     if u < 0x80:
       if char(u) in stop: break
       result.add(char(u))
-    elif width == 2:
-      result.add('?')
     else:
-      break
+      result.add('#')
     p += width
 
 proc contextAround(data: openArray[byte], pos, width, matchLen: int,
@@ -265,6 +289,11 @@ proc contextAround(data: openArray[byte], pos, width, matchLen: int,
     if s >= 0 and s + redactLen <= all.len:
       return printable(all[0 ..< s]) & redactName(all[s ..< s + redactLen]) &
         printable(all[s + redactLen .. ^1])
+    # The context stopped inside the span (a non-ASCII unit ends it): redact
+    # everything from the span's start.
+    if s >= 0 and s < all.len:
+      return printable(all[0 ..< s]) & redactName(all[s .. ^1])
+    return printable(all[0 ..< max(0, min(s, all.len))])
   printable(before & mid & after)
 
 iterator findAll(hay, needle: string): int =
@@ -295,6 +324,8 @@ proc scanHomeDirs(scan: var Scan, rules: Rules, data: openArray[byte],
         let prefix = sep.replace("users", "Users").replace("home", "home")
         if name.len == 0:
           continue
+        if not scan.crosses(p, at + name.len * width):
+          continue
         if isPlaceholder(name):
           scan.add(sevReport, "home-dir placeholder", prefix & name,
                    where & " " & enc)
@@ -314,6 +345,7 @@ proc scanLiterals(scan: var Scan, rules: Rules, data: openArray[byte],
       let v = value.toLowerAscii
       let needle = if width == 1: v else: utf16(v)
       for p in findAll(folded, needle):
+        if not scan.crosses(p, p + needle.len): continue
         let ctx = contextAround(data, p, width, value.len, 0, value.len)
         scan.add(sevRefuse, "forbidden " & label, redactName(value),
                  where & " " & enc & ": " & ctx)
@@ -321,6 +353,7 @@ proc scanLiterals(scan: var Scan, rules: Rules, data: openArray[byte],
       let v = value.toLowerAscii
       let needle = if width == 1: v else: utf16(v)
       for p in findAll(folded, needle):
+        if not scan.crosses(p, p + needle.len): continue
         scan.add(sevReport, "present " & label, value, where & " " & enc)
 
 proc attributedToAllowedSource(rules: Rules, data: openArray[byte],
@@ -354,13 +387,17 @@ proc scanSourceText(scan: var Scan, rules: Rules, data: openArray[byte],
       var e = p
       while e < raw.len and e - p < 72 and raw[e] notin {'\n', '\r', '\0'}:
         inc e
-      let line = printable(raw[p ..< e])
+      if not scan.crosses(p, e): continue
       let owner = attributedToAllowedSource(rules, data, p)
       if owner.len > 0:
         scan.add(sevReport, "allowed source text (" & owner.extractFilename & ")",
                  m.lang & " " & m.text.strip, where)
       else:
-        scan.add(sevRefuse, "source-text " & m.lang, line, where & " @" & $p)
+        # The line itself is not printed: the log of a public job would
+        # republish the source this rule refuses. `--dump` shows it locally.
+        scan.add(sevRefuse, "source-text " & m.lang,
+                 "a line starting `" & m.text.strip & "`",
+                 where & " @" & $p & " (" & $(e - p) & " chars)")
 
 proc scanPdb(scan: var Scan, data: openArray[byte], folded: string,
              where: string) =
@@ -414,24 +451,55 @@ proc scanSourcePaths(scan: var Scan, data: openArray[byte], folded: string) =
           continue
         scan.sourcePaths.inc(path)
 
-proc scanEmails(scan: var Scan, data: openArray[byte], where: string) =
-  let raw = toStr(data)
-  for p in findAll(raw, "@"):
-    var s = p
-    while s > 0 and raw[s - 1] in {'a' .. 'z', 'A' .. 'Z', '0' .. '9', '.', '_', '-', '+'}:
-      dec s
-    var e = p + 1
-    while e < raw.len and raw[e] in {'a' .. 'z', 'A' .. 'Z', '0' .. '9', '.', '-'}:
-      inc e
-    if p - s < 2 or e - p < 5: continue
-    let domain = raw[p + 1 ..< e].strip(chars = {'.'})
-    let dot = domain.rfind('.')
-    if dot <= 0 or domain.len - dot - 1 < 2: continue
-    var alphaTld = true
-    for c in domain[dot + 1 .. ^1]:
-      if c notin Letters: alphaTld = false
-    if not alphaTld: continue
-    scan.add(sevReport, "e-mail address", raw[s ..< e], where)
+proc scanEmails(scan: var Scan, rules: Rules, data: openArray[byte],
+                folded, where: string) =
+  ## An e-mail address is personal data: refused, in ASCII and UTF-16LE (the
+  ## Windows environment block), and shown redacted. A Nim assertion's
+  ## `name@module.nim` and other file names are not addresses.
+  const
+    LocalChars = {'a' .. 'z', 'A' .. 'Z', '0' .. '9', '.', '_', '-', '+'}
+    DomainChars = {'a' .. 'z', 'A' .. 'Z', '0' .. '9', '.', '-'}
+    FileExts = ["dll", "exe", "pdb", "map", "txt", "json", "bin", "dat", "log",
+                "so", "dylib", "lib", "obj", "md", "toml", "yml", "yaml"]
+  for width in [1, 2]:
+    let needle = if width == 1: "@" else: "@\0"
+    for p in findAll(folded, needle):
+      var s = p
+      while true:
+        let u = unitAt(data, s - width, width)
+        if u < 0 or u >= 0x80 or char(u) notin LocalChars: break
+        s -= width
+      var e = p + width
+      while true:
+        let u = unitAt(data, e, width)
+        if u < 0 or u >= 0x80 or char(u) notin DomainChars: break
+        e += width
+      var local, domain = ""
+      var q = s
+      while q < p:
+        local.add(char(unitAt(data, q, width)))
+        q += width
+      q = p + width
+      while q < e:
+        domain.add(char(unitAt(data, q, width)))
+        q += width
+      domain = domain.strip(chars = {'.'})
+      if local.len < 2 or domain.len < 4: continue
+      let dot = domain.rfind('.')
+      if dot <= 0 or domain.len - dot - 1 < 2: continue
+      let tld = domain[dot + 1 .. ^1].toLowerAscii
+      var alphaTld = true
+      for c in tld:
+        if c notin Letters: alphaTld = false
+      if not alphaTld or tld in SourceExts or tld in FileExts: continue
+      if not scan.crosses(s, e): continue
+      let enc = if width == 1: "ascii" else: "utf16le"
+      let address = local & "@" & domain
+      if address.toLowerAscii in rules.allowedEmails:
+        scan.add(sevReport, "e-mail allowed", address, where & " " & enc)
+      else:
+        scan.add(sevRefuse, "e-mail address", redactName(address),
+                 where & " " & enc)
 
 proc entropy(data: openArray[byte], a, b: int): float =
   var counts: array[256, int]
@@ -488,6 +556,14 @@ proc dump(scan: var Scan, rules: Rules, data: openArray[byte], where: string) =
   try: writeFile(path, toStr(data))
   except IOError, OSError: stderr.writeLine("warning: cannot write " & path)
 
+proc scanText(scan: var Scan, rules: Rules, data: openArray[byte],
+              folded, where: string) =
+  ## The rules that read text, which a frame seam can split.
+  scanHomeDirs(scan, rules, data, folded, where)
+  scanLiterals(scan, rules, data, folded, where)
+  scanSourceText(scan, rules, data, where)
+  scanEmails(scan, rules, data, folded, where)
+
 proc scanBuffer(scan: var Scan, rules: Rules, data: openArray[byte],
                 where: string, frameDepth: int, containerDepth: int,
                 isMember: bool): Result[void, string] =
@@ -495,16 +571,15 @@ proc scanBuffer(scan: var Scan, rules: Rules, data: openArray[byte],
   scan.decodedBytes += int64(data.len)
   dump(scan, rules, data, where)
   let folded = foldAscii(data)
-  scanHomeDirs(scan, rules, data, folded, where)
-  scanLiterals(scan, rules, data, folded, where)
-  scanSourceText(scan, rules, data, where)
+  scanText(scan, rules, data, folded, where)
   scanPdb(scan, data, folded, where)
   scanSourcePaths(scan, data, folded)
-  scanEmails(scan, data, where)
 
   # Every zstd frame inside, decompressed and scanned in turn; the spans they
-  # cover are what the undecoded-bytes report leaves out.
+  # cover are what the undecoded-bytes report leaves out. `carry` is the end
+  # of the content decoded so far, for the seam with the next frame.
   var covered: seq[(int, int)]
+  var carry: seq[byte]
   if frameDepth < MaxFrameDepth and data.len >= 4:
     var i = 0
     while i + 4 <= data.len:
@@ -514,18 +589,29 @@ proc scanBuffer(scan: var Scan, rules: Rules, data: openArray[byte],
         let inflated = decompressFrame(data, i, consumed)
         if consumed > 0:
           covered.add((i, i + consumed))
+          if carry.len > 0 and inflated.len > 0:
+            let seamBuf = carry & inflated[0 ..< min(inflated.len, SeamBytes)]
+            scan.seam = carry.len
+            scanText(scan, rules, seamBuf, foldAscii(seamBuf),
+                     where & " seam before zstd@" & $i)
+            scan.seam = 0
+          carry.add(inflated)
+          if carry.len > SeamBytes:
+            carry = carry[carry.len - SeamBytes .. ^1]
           ? scanBuffer(scan, rules, inflated, where & " zstd@" & $i,
                        frameDepth + 1, containerDepth, false)
           i += consumed
           continue
       inc i
 
+  # A member, or a frame's content, that is itself a container (a portable
+  # export embeds files; a container can be stored compressed).
+  if (isMember or frameDepth > 0) and containerDepth < MaxContainerDepth and
+      hasCtfsMagic(data):
+    return scanContainer(scan, rules, data, where & " >", containerDepth + 1)
+
   if not isMember:
     return ok()
-
-  # A member that is itself a container (a portable export embeds files).
-  if containerDepth < MaxContainerDepth and hasCtfsMagic(data):
-    return scanContainer(scan, rules, data, where & " >", containerDepth + 1)
 
   # Bytes nothing above decoded: high-entropy stretches outside every frame.
   # `covered` is in ascending order and its spans do not overlap.
@@ -632,6 +718,8 @@ proc main(): int =
     case args[i]
     of "--allow-user":
       inc i; rules.allowedUsers.incl(need(i).toLowerAscii)
+    of "--allow-email":
+      inc i; rules.allowedEmails.incl(need(i).toLowerAscii)
     of "--forbid":
       inc i; rules.forbid.add(("--forbid", need(i)))
     of "--report":
@@ -650,7 +738,7 @@ proc main(): int =
       hostRules = false
     of "-h", "--help":
       echo "usage: ct-leak-scan [--allow-user NAME] [--forbid VALUE] " &
-        "[--report VALUE] [--allow-source FILE] [--dump DIR] " &
+        "[--report VALUE] [--allow-email ADDR] [--allow-source FILE] [--dump DIR] " &
         "[--no-host-identity] <file.ct> [<file.ct> ...]"
       return 0
     else:
@@ -676,13 +764,13 @@ proc main(): int =
     var scan = Scan(file: f)
     let res = scanFile(scan, rules)
     if res.isErr:
-      echo "ERROR " & f & ": " & res.error
+      echo "ERROR " & maskText(f) & ": " & maskText(res.error)
       unreadable = true
       continue
     var refusedHere = 0
     for k, fd in scan.findings:
       if fd.severity == sevRefuse: inc refusedHere
-    echo (if refusedHere > 0: "LEAK  " else: "CLEAN ") & f & " (" &
+    echo (if refusedHere > 0: "LEAK  " else: "CLEAN ") & maskText(f) & " (" &
       $scan.buffers & " buffers, " & $scan.decodedBytes & " bytes decoded)"
     for sev in [sevRefuse, sevReport]:
       for k, fd in scan.findings:

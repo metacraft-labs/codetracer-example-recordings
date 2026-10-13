@@ -70,6 +70,7 @@ type Case = object
   args: seq[string]
   wantExit: int
   wantText: seq[string]
+  wantAbsent: seq[string] ## text the report must not print
 
 proc main(): int =
   let args = commandLineParams()
@@ -93,7 +94,8 @@ proc main(): int =
       "PUBLIC=C:\\Users\\Public\0HOME=C:\\Users\\runneradmin\0X=C:\\Users\\%USERNAME%\\x\0")),
     ("debug.dat", bytesOf("RSDS") & noise(20, 1) &
       bytesOf("C:\\actions-runner\\_work\\x\\ct_fixture_prog.pdb\0") &
-      bytesOf("ct_interpose/src/library_init_windows.nim\0") & noise(3 * bs, 2)),
+      bytesOf("ct_interpose/src/library_init_windows.nim\0") &
+      bytesOf("stew@endians2.nim(134, 3) `x`\0") & noise(3 * bs, 2)),
     ("src.c", bytesOf(fixtureSource)),
     ("cppages.nzd", zstdCompress(utf16Of("C:\\Users\\Default\\NTUSER.DAT\0") & noise(bs, 3))),
   ])
@@ -143,7 +145,8 @@ proc main(): int =
   # --- source code: a Nim module and a C file with no --allow-source -------
   writeContainer(dir / "nim-source.ct", @[
     ("b/0002", noise(bs, 9) & bytesOf("\nimport std/os\n\nproc leak*(x: int): int =\n  x + 1\n") & noise(bs, 10))])
-  cases.add Case(name: "nim-source", wantExit: 1, wantText: @["REFUSED source-text Nim"])
+  cases.add Case(name: "nim-source", wantExit: 1, wantText: @["REFUSED source-text Nim"],
+    wantAbsent: @["leak*(x: int)", "import std/os"])
   writeContainer(dir / "c-source.ct", @[("src.c", bytesOf(fixtureSource))])
   cases.add Case(name: "c-source-not-allowed", wantExit: 1,
     wantText: @["REFUSED source-text C"])
@@ -175,13 +178,80 @@ proc main(): int =
   cases.add Case(name: "pdb-injected-sources", wantExit: 1,
     wantText: @["REFUSED pdb-sources"])
 
+  # --- a path split across two successive zstd frames of one stream, cut
+  # inside the `\Users\` separator: neither frame holds a match by itself.
+  # The recorder seals a stream's frames at byte counts, not at records.
+  block:
+    let whole = utf16Of("C:\\Users\\" & fakeUser & "\\AppData\\Local\\Temp\0")
+    let cut = utf16Of("C:\\Us").len
+    writeContainer(dir / "seam-split.ct", @[("t00000000000",
+      zstdCompress(noise(bs, 14) & whole[0 ..< cut]) & noise(16, 15) &
+      zstdCompress(whole[cut .. ^1] & noise(bs, 16)))])
+  cases.add Case(name: "seam-split", wantExit: 1,
+    wantText: @["REFUSED home-dir", "seam before zstd@"])
+
+  # --- a user name in another script, UTF-16LE and UTF-8 ------------------
+  block:
+    var name16: seq[byte]
+    for cp in [0x0417, 0x0430, 0x0445, 0x0430, 0x0440, 0x0438]:
+      name16.add(byte(cp and 0xff)); name16.add(byte(cp shr 8))
+    writeContainer(dir / "nonascii-utf16.ct", @[("t00000000000", zstdCompress(
+      noise(bs, 17) & utf16Of("C:\\Users\\") & name16 & utf16Of("\\AppData\0") & noise(bs, 18)))])
+    writeContainer(dir / "nonascii-utf8.ct", @[("env",
+      bytesOf("HOME=/home/\xD0\x97\xD0\xB0\xD1\x85\xD0\xB0\xD1\x80\xD0\xB8/x\0"))])
+  cases.add Case(name: "nonascii-utf16", wantExit: 1, wantText: @["REFUSED home-dir"])
+  cases.add Case(name: "nonascii-utf8", wantExit: 1, wantText: @["REFUSED home-dir"])
+
+  # --- an e-mail address, ASCII and UTF-16LE (a git identity in the
+  # environment); allowed by name, it is reported instead.
+  writeContainer(dir / "email-ascii.ct", @[("env",
+    bytesOf("GIT_AUTHOR_EMAIL=" & fakeUser & "@example-corp.com\0"))])
+  cases.add Case(name: "email-ascii", wantExit: 1, wantText: @["REFUSED e-mail address"])
+  writeContainer(dir / "email-utf16.ct", @[("env",
+    utf16Of("GIT_AUTHOR_EMAIL=" & fakeUser & "@example-corp.com\0"))])
+  cases.add Case(name: "email-utf16", wantExit: 1,
+    wantText: @["REFUSED e-mail address", "utf16le"])
+  writeContainer(dir / "email-allowed.ct", @[("cp0.mzd",
+    bytesOf("i18n FDCC-set\0Somebody\0maintainer@example.org\0"))])
+  cases.add Case(name: "email-allowed", wantExit: 0,
+    args: @["--allow-email", "maintainer@example.org"], wantText: @["e-mail allowed"])
+
+  # --- a container stored as a zstd frame, its member's blocks interleaved
+  # with another member's and the path cut inside the separator at a block
+  # boundary: only walking the frame's content as a container finds it.
+  block:
+    var c = createCtfs()
+    var f = c.addFile("env").get()
+    var g = c.addFile("pad").get()
+    let path = utf16Of("C:\\Users\\" & fakeUser & "\\x\0")
+    let body = noise(bs - utf16Of("C:\\Us").len, 19) & path & noise(2 * bs, 20)
+    var at = 0
+    while at < body.len:
+      let n = min(bs, body.len - at)
+      doAssert c.writeToFile(f, body.toOpenArray(at, at + n - 1)).isOk
+      doAssert c.writeToFile(g, noise(bs, 21 + at)).isOk
+      at += n
+    let inner = c.toBytes()
+    doAssert not inner.holds(utf16Of("\\Users\\")), "test setup: separator contiguous"
+    writeContainer(dir / "container-in-frame.ct", @[("b/0001", zstdCompress(inner))])
+  cases.add Case(name: "container-in-frame", wantExit: 1,
+    wantText: @["REFUSED home-dir", "member b/0001 zstd@0 > member env"])
+
+  # --- the scanned file's own path names a user: printed masked ------------
+  createDir(dir / "Users" / fakeUser)
+  copyFile(dir / "clean.ct", dir / "Users" / fakeUser / "masked-path.ct")
+  cases.add Case(name: "masked-path", wantExit: 0,
+    args: @["--allow-source", allowedSource], wantText: @["CLEAN"])
+
   # --- not a container: never reported clean -------------------------------
   writeFile(dir / "not-ctfs.ct", "plain text, not a recording")
   cases.add Case(name: "not-a-container", wantExit: 2, wantText: @["ERROR"])
 
   var failures = 0
   for tc in cases:
-    let path = dir / (if tc.name == "c-source-not-allowed": "c-source" else: tc.name) & ".ct"
+    let path =
+      if tc.name == "masked-path": dir / "Users" / fakeUser / "masked-path.ct"
+      else: dir / (if tc.name == "c-source-not-allowed": "c-source" else: tc.name) & ".ct"
     var cmd = quoteShell(scanner) & " --no-host-identity"
     for a in tc.args: cmd.add(" " & quoteShell(a))
     cmd.add(" " & quoteShell(path))
@@ -189,6 +259,8 @@ proc main(): int =
     var ok = code == tc.wantExit
     for t in tc.wantText:
       if t notin output: ok = false
+    for t in tc.wantAbsent:
+      if t in output: ok = false
     # The report must never print a refused name.
     if fakeUser in output or fakeHost in output: ok = false
     if ok:
@@ -196,7 +268,7 @@ proc main(): int =
     else:
       inc failures
       echo "FAIL " & tc.name & ": exit " & $code & " (want " & $tc.wantExit &
-        "), want text " & $tc.wantText
+        "), want text " & $tc.wantText & ", absent " & $tc.wantAbsent
       echo output.indent(6)
   if failures == 0:
     echo "all " & $cases.len & " cases passed"
