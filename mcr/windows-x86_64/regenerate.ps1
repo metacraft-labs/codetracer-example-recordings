@@ -93,9 +93,22 @@ Remove-Item -Path $Trace -Force -ErrorAction SilentlyContinue
 # `env -i`); the shell's environment is restored afterwards. Recording from a
 # CI job or a developer shell otherwise publishes that shell's tokens in the
 # fixture.
+#
+# TEMP and TMP are set to a neutral directory, not kept from the shell: a
+# shell's TEMP is `C:\Users\<user>\AppData\Local\Temp`, so keeping it put the
+# recording user's name into the environment block of the recorded child, in
+# both traces (measured 2026-10-11 with the recorder's corpus_leak_scan.nim:
+# 9 user-name and 8 `C:\Users\` hits per trace). The environment is not the
+# only route: the program's DLLs read per-user registry values (one recording
+# captured HKCU's INetCache shell folder, `C:\Users\<user>\...`), so record
+# under an account whose name may be published, such as the CI runner's, and
+# from a directory that is not a junction (the recorder captures resolved NT
+# paths of mapped files).
 $keepVars = @("SystemRoot", "windir", "SystemDrive", "ComSpec", "PATHEXT",
-              "TEMP", "TMP", "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE",
+              "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE",
               "CT_LICENSE_DEV_NO_FFI", "CODETRACER_LICENSE_FILE")
+$NeutralTemp = Join-Path $env:SystemDrive "ct-fixture-tmp"
+New-Item -ItemType Directory -Path $NeutralTemp -Force | Out-Null
 $savedEnv = @(Get-ChildItem env: | ForEach-Object { [pscustomobject]@{ Name = $_.Name; Value = $_.Value } })
 try {
     foreach ($v in $savedEnv) {
@@ -103,12 +116,16 @@ try {
     }
     $env:Path = "$env:SystemRoot\System32;$env:SystemRoot"
     $env:LANG = "C"
+    $env:TEMP = $NeutralTemp
+    $env:TMP = $NeutralTemp
     & $CtMcr record -o $Trace -- $Binary
     $recordExit = $LASTEXITCODE
 } finally {
     foreach ($v in $savedEnv) { Set-Item -Path "env:$($v.Name)" -Value $v.Value }
-    Remove-Item -Path env:LANG -ErrorAction SilentlyContinue
-    if ($savedEnv.Name -contains "LANG") { $env:LANG = ($savedEnv | Where-Object Name -eq "LANG").Value }
+    foreach ($n in @("LANG", "TEMP", "TMP")) {
+        if ($savedEnv.Name -notcontains $n) { Remove-Item -Path "env:$n" -ErrorAction SilentlyContinue }
+    }
+    Remove-Item -Path $NeutralTemp -Recurse -Force -ErrorAction SilentlyContinue
 }
 if ($recordExit -ne 0) { throw "ct-mcr record failed with exit code $recordExit" }
 Write-Host ""
