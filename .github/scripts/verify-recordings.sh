@@ -9,7 +9,8 @@
 # For every file, five checks, all reported before the verdict:
 #   container   byte 5 of the CTFS header is the container version; must be 5
 #   meta.dat    the u16 after the first `CTMD` magic is the meta.dat schema;
-#               must be 6
+#               must be 7 (the version every reader at the pinned trace format
+#               reads; codetracer-trace-format-nim MetaDatVersion)
 #   ct-print    `ct-print --summary <file>` must exit 0.  ct-print refuses any
 #               other container version or meta.dat schema by itself, so this
 #               also decodes what the first two checks only read off the bytes.
@@ -31,7 +32,7 @@
 set -uo pipefail
 
 EXPECT_CONTAINER=5
-EXPECT_META=6
+EXPECT_META=7
 
 if [ "$#" -lt 4 ]; then
 	echo "usage: $0 <ct-print> <ct-credential-scan> <ct-member-names> <file.ct> [<file.ct> ...]" >&2
