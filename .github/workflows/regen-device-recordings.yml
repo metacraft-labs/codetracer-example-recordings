@@ -5,10 +5,19 @@
 # codetracer's committed repro.lock (at the `codetracer_ref` input), and the
 # recorder's siblings at the revisions the locks name
 # (`.github/scripts/provision-recorder.sh`).  It then checks every produced
-# `.ct` is container v5 / meta.dat v6 and opens with `ct-print` built from the
+# `.ct` is container v5 / meta.dat v7 and opens with `ct-print` built from the
 # pinned codetracer-trace-format-nim and stores every member under a storable
 # CTFS name (`.github/scripts/verify-recordings.sh`),
 # and uploads the recordings, the pins and the logs as an artifact.
+#
+# The windows-x86_64 job checks more, because a Windows recording captures
+# the recording account's per-user state and must replay in total order:
+# `ct_leak_scan.nim` refuses personal data and source code in every member
+# and zstd frame, and `verify-windows-recordings.ps1` requires the
+# `atomic_total_order` turns, the pinned portable id and a strict replay of
+# both files to completion.  It uploads the recordings only when the
+# credential and leak scans pass (this repository and its artifacts are
+# public); its logs are uploaded either way.
 #
 # Nothing is committed or pushed from here.  Whoever dispatched the run
 # downloads the artifact, re-verifies it, and commits it.
@@ -763,6 +772,13 @@ jobs:
             nim c --cc:vcc -d:release --hints:off -p:src -o:test_ct_member_names.exe "$env:GITHUB_WORKSPACE\.github\scripts\test_ct_member_names.nim"
           }
           Invoke-Native "member-name checker test" { .\test_ct_member_names.exe .\ct-member-names.exe }
+          Invoke-Native "leak scanner build" {
+            nim c --cc:vcc -d:release --hints:off -p:src -o:ct-leak-scan.exe "$env:GITHUB_WORKSPACE\.github\scripts\ct_leak_scan.nim"
+          }
+          Invoke-Native "leak scanner test build" {
+            nim c --cc:vcc -d:release --hints:off -p:src -o:test_ct_leak_scan.exe "$env:GITHUB_WORKSPACE\.github\scripts\test_ct_leak_scan.nim"
+          }
+          Invoke-Native "leak scanner test" { .\test_ct_leak_scan.exe .\ct-leak-scan.exe }
           Pop-Location
           Stop-Transcript
 
@@ -781,6 +797,7 @@ jobs:
           Stop-Transcript
 
       - name: Verify container version, ct-print and credentials
+        id: verify
         shell: bash
         run: |
           set -o pipefail
@@ -789,8 +806,45 @@ jobs:
             ../codetracer-trace-format-nim/ct-member-names.exe \
             mcr/windows-x86_64/trace.ct mcr/windows-x86_64/trace-portable.ct 2>&1 | tee regen-logs/verify.log
 
-      - name: Upload recordings and logs
+      - name: Scan for personal data and source code
+        # ct_leak_scan.nim reads every member and every zstd frame in it, in
+        # ASCII and UTF-16LE. The fixture program's own source is public, so
+        # its text may appear; any other source text, a home directory that
+        # is not the runner's, or the runner account's identity when that is
+        # a personal account fails the step. The report never prints what it
+        # refuses.
+        id: leak
+        if: always() && steps.verify.outcome != 'skipped'
+        shell: bash
+        run: |
+          set -o pipefail
+          ../codetracer-trace-format-nim/ct-leak-scan.exe --allow-source programs/ct_fixture_prog.c \
+            mcr/windows-x86_64/trace.ct mcr/windows-x86_64/trace-portable.ct 2>&1 | tee regen-logs/leak-scan.log
+
+      - name: Verify turns, the pinned recording id and strict replay
+        # Runs in the job that recorded the raw trace: it replays beside the
+        # sidecars ct-mcr record wrote next to it.
+        if: always() && steps.verify.outcome != 'skipped'
+        shell: bash
+        run: |
+          set -o pipefail
+          pwsh -NoProfile -File .github/scripts/verify-windows-recordings.ps1 \
+            -CtMcr ../codetracer-native-recorder/ct_cli/ct_mcr.exe \
+            -CtPrint ../codetracer-trace-format-nim/ct-print.exe 2>&1 | tee regen-logs/verify-windows.log
+
+      - name: Upload logs
         if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regen-windows-x86_64-logs
+          path: regen-logs/
+          if-no-files-found: warn
+          retention-days: 3
+
+      - name: Upload recordings
+        # Only recordings that passed the credential and leak scans: this
+        # repository is public, and so are its run artifacts.
+        if: always() && steps.verify.outcome == 'success' && steps.leak.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: regen-windows-x86_64
@@ -798,9 +852,21 @@ jobs:
             mcr/windows-x86_64/trace.ct
             mcr/windows-x86_64/trace-portable.ct
             mcr/windows-x86_64/binaries/
-            regen-logs/
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 3
+
+      - name: Mirror logs to S3 (non-blocking)
+        if: always()
+        continue-on-error: true
+        uses: metacraft-labs/metacraft-github-actions/mirror-artifacts-s3@dev
+        with:
+          path: regen-logs/
+          prefix: regen-windows-x86_64/${{ github.run_id }}
+          endpoint: ${{ vars.MCL_S3_ARTIFACTS_ENDPOINT }}
+          bucket: ${{ vars.MCL_S3_ARTIFACTS_BUCKET }}
+          region: ${{ vars.MCL_S3_ARTIFACTS_REGION }}
+          access-key-id: ${{ secrets.MCL_S3_ARTIFACTS_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.MCL_S3_ARTIFACTS_SECRET_ACCESS_KEY }}
 
   linux-x86_64:
     if: inputs.platforms == 'all' || inputs.platforms == 'linux-x86_64'

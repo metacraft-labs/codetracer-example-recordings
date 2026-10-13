@@ -14,3 +14,12 @@ result-man
 tools/ctfs-v4-to-v5/ctfs_v4_to_v5
 tools/ctfs-v4-to-v5/test_ctfs_v4_to_v5
 tools/ctfs-v4-to-v5/meta_v3_to_v6
+
+# Sidecars `ct-mcr record` and `ct-mcr replay-worker` write beside a Windows
+# recording (bootstrap mode, the stage-0 runtime and its map, recorded and
+# replayed stdout). The raw trace replays beside them; the fixture contract
+# commits only the .ct files.
+mcr/windows-x86_64/*.ct.*
+
+# The workflows' log directory.
+regen-logs/
