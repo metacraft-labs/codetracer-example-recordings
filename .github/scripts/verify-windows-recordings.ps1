@@ -9,12 +9,16 @@
 #   id          the portable export carries the pinned recording id
 #               (`ct-mcr trace info`).  The raw trace's id is minted by the
 #               recorder and only printed.
-#   replay      `ct-mcr replay-worker --verify --replay-strict` replays each
-#               file to completion in the recorded total order: exit 0 and
-#               `verify: replay complete`.  The raw trace replays beside the
-#               sidecars `ct-mcr record` wrote next to it (bootstrap mode and
-#               stage-0 runtime), so run this in the job that recorded it; the
-#               portable export carries its sidecars inside (`sidecars.bin`).
+#   replay      each file is copied ALONE into an empty directory, as the
+#               committed fixture is, and `ct-mcr replay-worker --verify
+#               --replay-strict` (default `--bootstrap auto`) replays it to
+#               completion in the recorded total order: exit 0, `verify:
+#               replay complete`, the stage-0 runtime taken from the copy the
+#               trace carries in `sidecars.bin` (not from a file beside it or
+#               from this build), and the replayed stdout byte-equal to the
+#               recorded stdout.  A recorder that does not carry its stage-0
+#               runtime in the trace fails this check: its fixtures replay
+#               only beside the build that recorded them.
 #
 # Every check runs and is reported before the verdict.  Exits 1 if any fails.
 #
@@ -71,21 +75,32 @@ foreach ($f in @($Trace, $Portable)) {
             "${f}: id     recording_id=$id (minted by the recorder; trace info exit $infoExit)"
     }
 
-    # replay
+    # replay, alone in an empty directory
     $log = Join-Path $LogDir ("replay-strict-" + [IO.Path]::GetFileNameWithoutExtension($f) + ".log")
-    $replayArgs = @("replay-worker", "--verify", "--replay-strict")
-    if ($f -eq $Trace) { $replayArgs += @("--bootstrap", "stage0") }
-    $replayArgs += $f
-    & $CtMcr @replayArgs *> $log
+    $alone = Join-Path ([IO.Path]::GetTempPath()) ("ct-verify-alone-" + [guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Path $alone | Out-Null
+    $copy = Join-Path $alone (Split-Path $f -Leaf)
+    Copy-Item -LiteralPath $f -Destination $copy
+    & $CtMcr replay-worker --verify --replay-strict $copy *> $log
     $replayExit = $LASTEXITCODE
     $complete = Select-String -Path $log -SimpleMatch "verify: replay complete" -Quiet
+    $carried = Select-String -Path $log -SimpleMatch "(the copy the trace carries)" -Quiet
     $replayed = (Select-String -Path $log -Pattern 'verify: \d+ events replayed successfully' |
         Select-Object -Last 1 | ForEach-Object { $_.Line.Trim() })
-    Report ($replayExit -eq 0 -and $complete) `
-        "${f}: replay strict, total order: exit $replayExit, complete=$complete; $replayed (log $log)"
+    $recordedStdout = "$Trace.recorded_stdout.bin"
+    $replayedStdout = "$copy.replay_stdout.bin"
+    $sameStdout = $false
+    if ((Test-Path -LiteralPath $recordedStdout) -and (Test-Path -LiteralPath $replayedStdout)) {
+        $a = [IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $recordedStdout))
+        $b = [IO.File]::ReadAllBytes($replayedStdout)
+        $sameStdout = ($a.Length -gt 0) -and ([Convert]::ToBase64String($a) -eq [Convert]::ToBase64String($b))
+    }
+    Report ($replayExit -eq 0 -and $complete -and $carried -and $sameStdout) `
+        "${f}: replay strict, alone, total order: exit $replayExit, complete=$complete, carried runtime=$carried, stdout equal=$sameStdout; $replayed (log $log)"
     if (-not ($replayExit -eq 0 -and $complete)) {
         Get-Content $log -Tail 15 | ForEach-Object { Write-Host "       replay: $_" }
     }
+    Remove-Item -LiteralPath $alone -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 if ($failed) { exit 1 }

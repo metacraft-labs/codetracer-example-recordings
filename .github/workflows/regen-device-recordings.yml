@@ -822,8 +822,9 @@ jobs:
             mcr/windows-x86_64/trace.ct mcr/windows-x86_64/trace-portable.ct 2>&1 | tee regen-logs/leak-scan.log
 
       - name: Verify turns, the pinned recording id and strict replay
-        # Runs in the job that recorded the raw trace: it replays beside the
-        # sidecars ct-mcr record wrote next to it.
+        # Each file is replayed ALONE in an empty directory, as it is
+        # committed: the stage-0 runtime must come from the copy the trace
+        # carries, not from the files ct-mcr record left beside it.
         if: always() && steps.verify.outcome != 'skipped'
         shell: bash
         run: |

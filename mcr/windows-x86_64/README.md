@@ -67,14 +67,29 @@ stage-0 stub (`stub.bin`, `stub_layout.txt`) built in
 .\mcr\windows-x86_64\regenerate.ps1
 ```
 
-It records under a cleared environment with a neutral `TEMP`. The raw trace
-replays strictly only beside the sidecars `ct-mcr record` writes next to it
-(`trace.ct.bootstrap_mode`, `trace.ct.stage0-runtime.dll` and `.map`), or with
-a stage-0 runtime byte-identical to the one it was recorded with:
+It records under a cleared environment with a neutral `TEMP`.
+
+A pair recorded by codetracer-native-recorder `agents` `0f2a19b1` or later
+carries the stage-0 runtime it ran, and its linker map, inside each file
+(`sidecars.bin`). Each file then replays strictly on its own, with nothing
+beside it, under any `ct-mcr` from that revision on, whatever its own stage-0
+runtime is:
 
 ```powershell
-ct_mcr.exe replay-worker --verify --replay-strict --bootstrap stage0 mcr\windows-x86_64\trace.ct
+ct_mcr.exe replay-worker --verify --replay-strict mcr\windows-x86_64\trace.ct
 ```
+
+The log says `stage0 runtime identity matched ... (the copy the trace
+carries)`. A pair recorded by an older recorder replays only beside the files
+`ct-mcr record` wrote next to it (`trace.ct.bootstrap_mode`,
+`trace.ct.stage0-runtime.dll` and `.map`), or with a stage-0 runtime
+byte-identical to the one it was recorded with (`--bootstrap stage0`).
+
+A pair recorded on the CI runner (a service, session 0) replays in session 0
+but not yet in an interactive desktop session, and the reverse. Boundary-B
+restore row #3, the system default activation-context mapping, differs between
+sessions. This is an open replay-contract item; see the Windows replay contract
+in codetracer-pm.
 
 ## Usage in tests
 
