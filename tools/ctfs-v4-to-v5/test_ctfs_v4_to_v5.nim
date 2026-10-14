@@ -16,8 +16,12 @@
 ## below), `paths.dat` must hold the version-3 path list, every other member
 ## must still match the table, and the member renames of recorder `e16f18457`
 ## must map each old lossy key to its storable name.  The committed fixture
-## must be exactly v4 -> v5 -> meta v6 of the kept original, byte for byte, so
-## a later edit to that file fails here too.
+## must be exactly v4 -> v5 -> meta v6 -> meta v7 of the kept original, byte
+## for byte, so a later edit to that file fails here too.  The last step is
+## `../meta-v6-to-v7` (codetracer-trace-format-nim `20ba929`, after which the
+## current readers read `meta.dat` version 7 only); a version-6 `meta.dat` is
+## read through them as that step's output, which differs in its version byte
+## alone.
 ##
 ## Run:  nim c -r --path:<codetracer-trace-format-nim>/src test_ctfs_v4_to_v5.nim
 ## (needs nimcrypto, which codetracer-trace-format-nim's environment carries).
@@ -31,6 +35,7 @@ import codetracer_ctfs/[types, base40, container]
 import codetracer_trace_writer/[meta_dat, interning_table]
 import ./ctfs_v4_to_v5
 import ./meta_v3_to_v6
+import "../meta-v6-to-v7/meta_v6_to_v7"
 
 const
   here = currentSourcePath().parentDir
@@ -85,6 +90,17 @@ template checkMembers(image: seq[byte]) =
       check got.get.len == length
       check $sha256.digest(got.get) == digest
 
+template checkMembersExceptMeta(image: seq[byte]) =
+  ## Every member but `meta.dat` against the `86ca226^` table, by name.
+  let data = image
+  for (name, length, digest) in expected:
+    if name == "meta.dat": continue
+    let got = readInternalFile(data, name, 4096, 128)
+    check got.isOk
+    if got.isOk:
+      check got.get.len == length
+      check $sha256.digest(got.get) == digest
+
 suite "ctfs v4 -> v5":
   test "the v4 walk reads the members the 86ca226^ reader read":
     let src = readV4Members(readCtfsFromFile(v4Input).get)
@@ -107,10 +123,16 @@ suite "ctfs v4 -> v5":
     check up.isOk
     if up.isOk:
       let data = up.get
-      let meta = readMetaDat(readInternalFile(data, "meta.dat", 4096, 128).get)
+      let raw = readInternalFile(data, "meta.dat", 4096, 128).get
+      check raw[4] == 6'u8 and raw[5] == 0'u8
+      # The current reader reads version 7 only: read the version-7 view.
+      let asV7 = upgradeMetaDatV6(data)
+      check asV7.isOk
+      let meta = readMetaDat(readInternalFile(asV7.get, "meta.dat", 4096,
+                                              128).get)
       check meta.isOk
       if meta.isOk:
-        check meta.get.version == 6
+        check meta.get.version == 7
         check meta.get.recordingId == "019f2f59-f478-7c60-800f-91c100c55cca"
         check meta.get.program == "/tmp/eme5rec/null_main"
         check meta.get.recorderId == "mcr-interpose"
@@ -145,12 +167,16 @@ suite "ctfs v4 -> v5":
       for j in i + 1 ..< keys.len:
         check keys[i] != keys[j]
 
-  test "the committed fixture is exactly that conversion":
+  test "the committed fixture is exactly that conversion, then meta v6 -> v7":
     let v5 = convertV4ToV5(readCtfsFromFile(v4Input).get).get
     let up = upgradeMetaDatV3(v5)
     check up.isOk
     if up.isOk:
-      check readCtfsFromFile(convertedFixture).get == up.get
+      let v7 = upgradeMetaDatV6(up.get)
+      check v7.isOk
+      if v7.isOk:
+        check readCtfsFromFile(convertedFixture).get == v7.get
+        checkMembersExceptMeta(v7.get)
 
   test "a container that is not version 4 is refused, naming its version":
     let v5 = convertV4ToV5(readCtfsFromFile(v4Input).get).get

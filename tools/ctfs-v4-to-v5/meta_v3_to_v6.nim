@@ -40,6 +40,14 @@
 ## The result is checked through the CURRENT readers: `readMetaDat` must
 ## accept it with every field equal to the version-3 decode, `paths.dat` must
 ## read back the version-3 list, and every other member must be byte-identical.
+##
+## Since codetracer-trace-format-nim `20ba929` (2026-10-12) the current
+## readers accept only `meta.dat` version 7.  Version 7 changes no byte of the
+## version-6 header or body (it assigns new `EventLogKind` values only), so the
+## version-6 result is read through them as the version-7 container
+## `../meta-v6-to-v7` makes of it, which differs in the version byte alone and
+## which that tool verifies.  The tool still writes version 6: the third step
+## of the chain, `meta_v6_to_v7`, is a separate one.
 
 when defined(nimPreviewSlimSystem):
   import std/[syncio, assertions]
@@ -47,6 +55,7 @@ when defined(nimPreviewSlimSystem):
 import results
 import codetracer_ctfs/[types, base40, container]
 import codetracer_trace_writer/[meta_dat, interning_table, varint]
+import "../meta-v6-to-v7/meta_v6_to_v7"
 
 type
   MetaV3* = object
@@ -195,13 +204,20 @@ proc upgradeMetaDatV3*(data: openArray[byte]): Result[seq[byte], string] =
                    "kept")
   let output = dst.toBytes()
 
-  # Verify through the current readers.
+  # Verify through the current readers, which read version 7 only: the
+  # result's meta.dat is read as the version-7 container of the same
+  # recording (see the module note).
   let mr = readInternalFile(output, "meta.dat", bs, maxRoot)
   if mr.isErr: return err("meta.dat does not read back: " & mr.error)
-  let parsed = readMetaDat(mr.get)
+  if mr.get != v6: return err("meta.dat does not read back as written")
+  let asV7 = upgradeMetaDatV6(output)
+  if asV7.isErr: return err("the version-7 view of the result: " & asV7.error)
+  let mr7 = readInternalFile(asV7.get, "meta.dat", bs, maxRoot)
+  if mr7.isErr: return err("meta.dat does not read back: " & mr7.error)
+  let parsed = readMetaDat(mr7.get)
   if parsed.isErr: return err("readMetaDat refuses the result: " & parsed.error)
   let c = parsed.get
-  if c.version != 6 or c.recordingId != m.recordingId or
+  if c.version != 7 or c.recordingId != m.recordingId or
      c.program != m.program or c.args != m.args or c.workdir != m.workdir or
      c.recorderId != m.recorderId:
     return err("readMetaDat reads back different fields")

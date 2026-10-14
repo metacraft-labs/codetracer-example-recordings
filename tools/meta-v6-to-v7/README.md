@@ -18,7 +18,10 @@ bundle has no `events.dat` and is checked through `meta.dat` alone.
 
 `test_meta_v6_to_v7.nim` writes a recording with the current writer, sets its
 version byte back to 6, and requires the upgrade to return the original file
-byte for byte. It also checks both refusals.
+byte for byte. It also checks both refusals, and it pins the committed
+fixtures this tool upgraded: each, with its version byte set back to 6, must
+have the sha256 of its version-6 file at `76e71a4^`, and must upgrade back to
+itself.
 
 ```sh
 TF=../../../codetracer-trace-format-nim/src   # the workspace sibling

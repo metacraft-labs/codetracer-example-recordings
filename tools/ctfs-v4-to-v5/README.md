@@ -36,5 +36,11 @@ nim c -d:release --path:$TF meta_v3_to_v6.nim
 ./meta_v3_to_v6 in.ct out.ct
 ```
 
-A new recording is written as version 5 by the recorder. Do not use these
-tools for one.
+Since codetracer-trace-format-nim `20ba929` the current readers accept only
+`meta.dat` version 7, so the chain has a third step, `../meta-v6-to-v7`. The
+`meta_v3_to_v6` result is verified as the version-7 container that step makes
+of it, and the test requires the committed fixture to be the result of all
+three steps.
+
+A new recording is written by the recorder in the current format. Do not use
+these tools for one.

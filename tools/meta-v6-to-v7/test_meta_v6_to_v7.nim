@@ -6,12 +6,21 @@
 ## refuses a container already at version 7 and a version-6 container whose
 ## `events.dat` carries a kind version 6 does not assign.  No mocks: the real
 ## writer, the real readers, real files.
+##
+## It also pins the committed fixtures this tool upgraded (`76e71a4`): each
+## must be its version-6 recording with the version byte alone changed.  The
+## table below holds the sha256 of each file as committed at `76e71a4^`,
+## computed by `git show 76e71a4^:<path> | sha256sum`, not by this tool.  The
+## test sets the committed file's version byte back to 6 and requires that
+## digest, so every member but `meta.dat`'s version is byte-identical to the
+## version-6 recording, and it requires the upgrade of that image to give the
+## committed file back.  A fixture re-recorded later leaves this table.
 
 when defined(nimPreviewSlimSystem):
   import std/[syncio, assertions]
 
 import std/[os, strutils]
-import results
+import results, nimcrypto/sha2
 import codetracer_ctfs/[types, container]
 import codetracer_trace_types
 import codetracer_trace_writer/multi_stream_writer
@@ -34,6 +43,38 @@ proc stampedV6(v7: seq[byte]): seq[byte] =
   let runs = locateMember(v7, "meta.dat", bs, maxRoot).get
   doAssert result[runs[0].at + 4] == 7
   result[runs[0].at + 4] = 6
+
+const
+  repoRoot = currentSourcePath().parentDir / ".." / ".."
+  # path, sha256 of the version-6 file at `76e71a4^`.
+  upgradedFixtures = [
+    ("javascript/flow_test/trace.ct",
+      "a60bffb330724bb79c56565140f9686f57a9dcc648f97847e7b7d4fd529784ec"),
+    ("mcr/linux-x86_64/trace-portable.ct",
+      "b77546032bfeff400dea340c2ab22375e471e7054db765bc23581d3b8e47e8c8"),
+    ("mcr/linux-x86_64/trace.ct",
+      "e29225486db5b773197f9d77d93f4dc07a96a0fccf7354b7b7a86d3ca5bce721"),
+    ("mcr/macos-arm64/emulator/eme5/null_main.ct",
+      "fbde1b11d0f2e1abf76643e4b9c2b0e072c55498d7817b4984a5262c07b646f7"),
+    ("mcr/macos-arm64/emulator/eme5/one_puts.ct",
+      "cb59c7d4f1cccff7546938cd7014718fa9b1b29556280d315645ab6a97572ea6"),
+    ("mcr/macos-arm64/emulator/eme5_inject/one_write.ct",
+      "ff799913b7a1579499ceedadaeea6be7d15f4a122f64dd19b41f1f28546f3c56"),
+    ("mcr/macos-arm64/emulator/eme5_predyld/one_write.ct",
+      "ad326ac2e234a4f68f40ca6c6a2f1936f9557a0cd8fd2b7a9d6b565ac4745a9e"),
+    ("mcr/macos-arm64/emulator/eme_m9c_2006/one_write.ct",
+      "c02ddc8910bf3e868ceee816040e888e34fe9f01909c804ca0c4e1232c1a7f8c"),
+    ("mcr/macos-arm64/trace-portable.ct",
+      "97cd0033fd4ac896b1311e5c9c7be46c15a4fa53232407faabbf0e6b566a3fb7"),
+    ("mcr/macos-arm64/trace.ct",
+      "7cfb12edc051e64f4ae562fa41046a1c2e71efe56814627f93c5fac1ccaaa0e9"),
+    ("mcr/windows-x86_64/trace-portable.ct",
+      "95e9bb0dc535e097c72df1e0a7e851da0b26707ee0e731a80c306f2e8b2e9917"),
+    ("mcr/windows-x86_64/trace.ct",
+      "bae4ae5d956a21d63845e28a3e29f8e434a2f8699a962a5fb9b3fe8f795db272"),
+    ("ruby/flow_test/trace.ct",
+      "2e5de98a8160667c98649bd6d5dc770c9e2ec2cb5c8d5b606c5e167edfd13117"),
+  ]
 
 let dir = getTempDir() / ("meta_v6_to_v7_" & $getCurrentProcessId())
 createDir(dir)
@@ -58,5 +99,18 @@ block a_kind_version_6_does_not_assign_is_refused:
   let up = upgradeMetaDatV6(v6)
   doAssert up.isErr and "kind 14" in up.error, $up
   echo "PASS a_kind_version_6_does_not_assign_is_refused"
+
+block the_committed_fixtures_are_their_v6_recordings_with_one_byte_changed:
+  for (path, v6Digest) in upgradedFixtures:
+    let v7 = cast[seq[byte]](readFile(repoRoot / path))
+    let v6 = stampedV6(v7)
+    doAssert toLowerAscii($sha256.digest(v6)) == v6Digest,
+      path & ": with its version byte set back to 6 it is not the version-6 " &
+      "recording committed at 76e71a4^"
+    let up = upgradeMetaDatV6(v6)
+    doAssert up.isOk, path & ": " & up.error
+    doAssert up.get == v7, path & ": the upgrade is not the committed file"
+  echo "PASS the_committed_fixtures_are_their_v6_recordings_with_one_byte_changed (",
+    upgradedFixtures.len, " fixtures)"
 
 removeDir(dir)
