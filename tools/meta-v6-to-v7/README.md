@@ -12,13 +12,15 @@ The tool rewrites that byte where it sits in the file and writes nothing else.
 It refuses a container whose `meta.dat` is not version 6, or whose image is not
 the file's bytes, or whose `events.dat` carries a kind outside 0-13. Each
 result is read back through the current readers. `meta.dat` must differ from
-the input only in its version and the file in that one byte, and for a
+the input only in its version and the file in that one byte. A container
+that carries some but not all of the four interning tables (paths, funcs,
+types, varnames) is refused, as the writer and every reader refuse it. For a
 split-stream trace the trace reader must read every event. A native (MCR)
 bundle has no `events.dat` and is checked through `meta.dat` alone.
 
 `test_meta_v6_to_v7.nim` writes a recording with the current writer, sets its
 version byte back to 6, and requires the upgrade to return the original file
-byte for byte. It also checks both refusals, and it pins the committed
+byte for byte. It also checks the refusals, and it pins the committed
 fixtures this tool upgraded: each, with its version byte set back to 6, must
 have the sha256 of its version-6 file at `76e71a4^`, and must upgrade back to
 itself. The two `eme5` fixtures were regenerated since, and are pinned by

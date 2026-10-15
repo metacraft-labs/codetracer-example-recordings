@@ -20,7 +20,8 @@
 ## through the CURRENT readers: `meta.dat` must read back as the input's with
 ## only the version byte changed and `readMetaDat` must accept it, the file
 ## must differ from the input in that one byte (so every other member is
-## byte-identical), and for a split-stream trace (one with `steps.dat`) the
+## byte-identical), the container must carry all four interning tables or
+## none of them, and for a split-stream trace (one with `steps.dat`) the
 ## trace reader must open it and read every `events.dat` record.  A native
 ## (MCR) bundle carries no `events.dat`; one that carries it without
 ## `steps.dat` is refused, since its kinds cannot be checked here.
@@ -80,6 +81,12 @@ proc upgradeMetaDatV6*(data: openArray[byte]): Result[seq[byte], string] =
     if data[i] != output[i]: inc changed
   if changed != 1:
     return err("the upgrade changed " & $changed & " bytes, not 1")
+  # The interning tables are carried all four or none (`internal-files.md`
+  # "Interning Tables"). A native bundle is not opened by the trace reader
+  # below, so the set is checked here, with the writer's and readers' check.
+  let partialSet = interningSetRefusal(output, maxRoot)
+  if partialSet.len > 0:
+    return err(partialSet)
   if hasInternalFile(output, "steps.dat", maxRoot):
     # A split-stream trace: the trace reader must open it and read every
     # event, and a version-6 recording carries kinds 0-13 only.

@@ -7,6 +7,11 @@
 ## `events.dat` carries a kind version 6 does not assign.  No mocks: the real
 ## writer, the real readers, real files.
 ##
+## It refuses a container that carries some but not all of the four interning
+## tables, as the writer and every reader do (`internal-files.md` "Interning
+## Tables"); the partial container for that is built with the writer's
+## unchecked `toBytes`, since every checked way of finishing one refuses it.
+##
 ## It also pins the committed fixtures this tool upgraded (`76e71a4`): each
 ## must be its version-6 recording with the version byte alone changed.  The
 ## table below holds the sha256 of each file as committed at `76e71a4^`,
@@ -26,7 +31,7 @@ import std/[os, strutils]
 import results, nimcrypto/sha2
 import codetracer_ctfs/[types, container]
 import codetracer_trace_types
-import codetracer_trace_writer/multi_stream_writer
+import codetracer_trace_writer/[multi_stream_writer, interning_table]
 import meta_v6_to_v7
 
 proc record(path: string, kinds: openArray[EventLogKind]): seq[byte] =
@@ -98,6 +103,24 @@ block a_kind_version_6_does_not_assign_is_refused:
   let up = upgradeMetaDatV6(v6)
   doAssert up.isErr and "kind 14" in up.error, $up
   echo "PASS a_kind_version_6_does_not_assign_is_refused"
+
+block a_native_bundle_with_a_partial_interning_set_is_refused:
+  # A native (MCR) bundle: meta.dat and paths.dat/paths.off, no steps.dat, so
+  # no trace reader opens it on the way through the upgrade.
+  let v7 = record(dir / "d.ct", [elkWrite])
+  let meta6 = readInternalFile(stampedV6(v7), "meta.dat",
+    readU32LE(v7, 8), readU32LE(v7, 12)).get
+  var c = createCtfs()
+  var mf = c.addFile("meta.dat").get
+  doAssert c.writeToFile(mf, meta6).isOk
+  var paths = initInterningTableWriter(c, "paths").get
+  doAssert c.ensureId(paths, "/src/u.nim").get == 0
+  let partial = c.toBytes()
+  let up = upgradeMetaDatV6(partial)
+  doAssert up.isErr, "a container with paths.dat/paths.off alone was " &
+    "upgraded; the interning tables are carried all four or none"
+  doAssert "all four or none" in up.error, up.error
+  echo "PASS a_native_bundle_with_a_partial_interning_set_is_refused"
 
 block the_committed_fixtures_are_their_v6_recordings_with_one_byte_changed:
   for (path, v6Digest) in upgradedFixtures:
