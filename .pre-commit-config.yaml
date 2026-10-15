@@ -143,6 +143,22 @@ repos:
         types: [file]
         files: \.(tf|tftest\.hcl)$
 
+      # Every committed recording, opened by BOTH trace readers (the Nim
+      # ct-print and the Rust codetracer_trace_util), whenever a commit adds
+      # or changes a `.ct` or the verification itself. `always_run`, because
+      # the top-level `exclude` hides `mcr/` and the flow_test trees from every
+      # file-filtered hook; the script itself returns at once for a commit that
+      # touches no recording. It builds the readers from the sibling
+      # checkouts, or takes CT_PRINT / CT_CREDENTIAL_SCAN / CT_MEMBER_NAMES /
+      # CT_VERIFY_TRACE. The `verify-recordings` workflow runs the same check
+      # on every push.
+      - id: verify-committed-recordings
+        name: verify committed recordings with both trace readers
+        entry: bash .github/scripts/pre-commit-verify-recordings.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+
       - id: prettier
         name: prettier
         entry: prettier --check --list-different=false --log-level=warn --ignore-unknown --write

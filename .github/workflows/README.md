@@ -233,3 +233,26 @@ and will fail at the first step. **Infra follow-up:** register this repo
 with the CI token-provider app and grant it access to the `codetracer` and
 `codetracer-native-recorder` repos, and set the Attic vars — mirroring the
 `codetracer` / `codetracer-native-recorder` setup.
+
+## `verify-recordings.yml` — every committed recording, both readers
+
+Every push and pull request runs `.github/scripts/verify-all-recordings.sh`
+over every committed `.ct`. Each file must be container v5 / `meta.dat` v7,
+open with the Nim reader (`ct-print --summary`) and with the Rust readers
+(`codetracer_trace_util verify-trace`), carry no credential, and store every
+member under a storable name. The readers are built from the
+`codetracer-trace-format-nim` and `codetracer-trace-format` revisions that
+codetracer's `repro.lock` pins (`provision-readers.sh`,
+`build-verify-tools.sh`). The files listed in
+`.github/recordings-not-yet-readable.txt` (the container-v3 Android and iOS
+recordings, and the version-4 converter inputs under
+`tools/ctfs-v4-to-v5/testdata/`) must instead be refused by both readers for
+their container version. A listed file that opens fails the check until its
+line is removed.
+
+The check uses both readers because a check through one reader passes
+whatever that reader accepts. Two converted `eme5` fixtures carried
+`paths.dat` without the other three interning tables. `ct-print` opened them
+and the Rust readers refused them. The pre-commit hook
+`verify-committed-recordings` (`pre-commit-verify-recordings.sh`) runs the
+same check on the staged files when a commit changes a recording.
