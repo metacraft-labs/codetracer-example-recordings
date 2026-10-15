@@ -21,25 +21,36 @@
 ##        file, in path-id order, so `paths.dat` is written from it with the
 ##        current writer, one plain record per path (the column-aware form is
 ##        only for a trace that sets `FLAG_HAS_COLUMN_AWARE_STEPS`, which a v3
-##        `meta.dat` has no bit for).  An empty list writes no `paths.dat`, as
-##        a current recorder with no source paths writes none.
+##        `meta.dat` has no bit for).  `paths.dat` is one of the four
+##        interning tables, which a trace carries all four or none
+##        (internal-files.md "Interning Tables"), so it is written as the
+##        current native recorder writes it: `initTraceInterningTables`, with
+##        `funcs`, `types` and `varnames` empty — a native recording interns
+##        no function, type or variable name, and `meta.dat` bit 12 stays
+##        clear, as that recorder leaves it.  An empty list writes none of the
+##        four, as a current recorder with no source paths writes none.
 ##
 ## MEMBER NAMES.  The macOS recorder stored its seed and sidecar members as
-## `t_start.*` / `cp0.predyld.syscalls`; `_` is outside the CTFS name alphabet
+## `t_start.*` / `cp0.predyld.syscalls`, and its event log as
+## `event_log.dat` / `event_log.idx`; `_` is outside the CTFS name alphabet
 ## and several names exceed 12 characters, so the containers hold LOSSY keys.
-## Recorder `e16f18457` (2026-10-04) renamed them in the writer and every
-## reader (`t_start.mem` -> `tstart.mem`, ...).  The rename is reproduced here
+## Recorder `e16f18457` (2026-10-04) renamed the seed and sidecar members in
+## the writer and every reader (`t_start.mem` -> `tstart.mem`, ...), and
+## recorder `40aa129e` (the same day) left `eventlog.dat` / `eventlog.idx` as
+## the only event-log names any reader opens.  The renames are reproduced here
 ## exactly: a member is renamed iff its stored key equals the key the old
-## writer computed for an old name in that commit's table (the keys of the
-## table's names are pairwise distinct, so the match is exact).  The bytes are
-## not touched.
+## writer computed for an old name in that table (the keys of the table's
+## names are pairwise distinct, so the match is exact).  The bytes are not
+## touched.
 ##
 ## Every other byte of `meta.dat` — the strings before the path list and the
 ## whole MCR / replay-launch / layout / filter tail — is copied unchanged, and
 ## every other member of the container is copied unchanged, in the same order.
 ## The result is checked through the CURRENT readers: `readMetaDat` must
-## accept it with every field equal to the version-3 decode, `paths.dat` must
-## read back the version-3 list, and every other member must be byte-identical.
+## accept it with every field equal to the version-3 decode, the native-bundle
+## reader `ct-print` uses must open it, the four interning tables must be
+## present with `paths.dat` reading back the version-3 list and the other three
+## empty, and every other member must be byte-identical.
 ##
 ## Since codetracer-trace-format-nim `20ba929` (2026-10-12) the current
 ## readers accept only `meta.dat` version 7.  Version 7 changes no byte of the
@@ -55,6 +66,10 @@ when defined(nimPreviewSlimSystem):
 import results
 import codetracer_ctfs/[types, base40, container]
 import codetracer_trace_writer/[meta_dat, interning_table, varint]
+import native_decoder
+import ./member_renames
+
+export member_renames
 import "../meta-v6-to-v7/meta_v6_to_v7"
 
 type
@@ -117,24 +132,6 @@ proc metaV6Bytes*(m: MetaV3): seq[byte] =
   result.add m.head
   result.add m.tail
 
-const MemberRenames* = [
-  # recorder e16f18457: old full name -> storable name
-  ("t_start.mem", "tstart.mem"), ("t_start.regs", "tstart.regs"),
-  ("t_start.sysregs", "tstart.sregs"), ("t_start.stack", "tstart.stk"),
-  ("t_start.cdata", "tstart.cdata"), ("t_start.clos", "tstart.clos"),
-  ("t_start.comm", "tstart.comm"), ("t_start.notify_ports", "tstart.ntfy"),
-  ("t_start.pmem", "tstart.pmem"), ("t_start.bpat", "tstart.bpat"),
-  ("t_start.ete", "tstart.ete"), ("t_start.cache_arm_va", "tstart.cava"),
-  ("t_start.predyld_blob", "tstart.pdyld"),
-  ("cp0.predyld.syscalls", "cp0.pdysys")]
-
-proc renamedMember*(storedKey: uint64): string =
-  ## The storable name for a member stored under an old lossy key; "" when the
-  ## key is no old name's.
-  for (old, new) in MemberRenames:
-    if base40Encode(old) == storedKey: return new
-  ""
-
 proc memberNames(data: openArray[byte], maxRoot: uint32): seq[string] =
   for i in 0 ..< int(maxRoot):
     let enc = readU64LE(data, HeaderSize + ExtHeaderSize + i * FileEntrySize + 16)
@@ -142,8 +139,9 @@ proc memberNames(data: openArray[byte], maxRoot: uint32): seq[string] =
 
 proc upgradeMetaDatV3*(data: openArray[byte]): Result[seq[byte], string] =
   ## A version-5 container whose `meta.dat` is schema 3 -> the same container
-  ## with a schema-6 `meta.dat` (and `paths.dat` when the v3 list is not
-  ## empty), verified as the module note says.
+  ## with a schema-6 `meta.dat` (and the four interning tables, holding the
+  ## v3 path list, when that list is not empty), verified as the module note
+  ## says.
   if data.len < 16 or data[5] != CtfsVersion:
     return err("not a CTFS version-" & $CtfsVersion & " container")
   let bs = readU32LE(data, 8)
@@ -155,7 +153,7 @@ proc upgradeMetaDatV3*(data: openArray[byte]): Result[seq[byte], string] =
     if mb.isErr: return err("meta.dat: " & mb.error)
     discard ?parseMetaV3(mb.get)
   for n in names:
-    if n == "paths.dat" or n == "paths.off":
+    if n in InterningTableMembers:
       return err("the container already carries " & n & "; a version-3 " &
                  "meta.dat holds the path list itself")
     if n == "steps.dat" or n == "calls.dat":
@@ -195,14 +193,14 @@ proc upgradeMetaDatV3*(data: openArray[byte]): Result[seq[byte], string] =
     let bytes = if n == "meta.dat": v6 else: b
     if bytes.len > 0: ?dst.writeToFile(f, bytes)
   if m.paths.len > 0:
-    var it = ?initInterningTableWriter(dst, "paths")
+    var tables = ?initTraceInterningTables(dst)
     for i, path in m.paths:
-      let id = ?ensureId(dst, it, path)
+      let id = ?ensurePathId(dst, tables, path)
       if id != uint64(i):
         return err("path " & path & " was interned as id " & $id & ", not " &
                    $i & ": the v3 list repeats a path, so its ids cannot be " &
                    "kept")
-  let output = dst.toBytes()
+  let output = ?finishCtfs(dst)
 
   # Verify through the current readers, which read version 7 only: the
   # result's meta.dat is read as the version-7 container of the same
@@ -221,7 +219,19 @@ proc upgradeMetaDatV3*(data: openArray[byte]): Result[seq[byte], string] =
      c.program != m.program or c.args != m.args or c.workdir != m.workdir or
      c.recorderId != m.recorderId:
     return err("readMetaDat reads back different fields")
+  # The whole recording, as `ct-print` opens a native bundle.
+  let bundle = detectNativeBundle(asV7.get)
+  if bundle.isErr: return err("the native-bundle reader refuses the result: " &
+                              bundle.error)
+  let partialSet = interningSetRefusal(output, maxRoot)
+  if partialSet.len > 0:
+    return err(partialSet)
   if m.paths.len > 0:
+    for table in ["funcs", "types", "varnames"]:
+      let t = initInterningTableReader(output, table, bs, maxRoot)
+      if t.isErr: return err(table & ".dat does not open: " & t.error)
+      if t.get.count != 0:
+        return err(table & ".dat holds " & $t.get.count & " records, not 0")
     let r = initInterningTableReader(output, "paths", bs, maxRoot)
     if r.isErr: return err("paths.dat does not open: " & r.error)
     if r.get.count != uint64(m.paths.len):

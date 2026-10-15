@@ -21,7 +21,8 @@ version byte back to 6, and requires the upgrade to return the original file
 byte for byte. It also checks both refusals, and it pins the committed
 fixtures this tool upgraded: each, with its version byte set back to 6, must
 have the sha256 of its version-6 file at `76e71a4^`, and must upgrade back to
-itself.
+itself. The two `eme5` fixtures were regenerated since, and are pinned by
+`../ctfs-v4-to-v5` as the whole chain from their version-4 originals.
 
 ```sh
 TF=../../../codetracer-trace-format-nim/src   # the workspace sibling

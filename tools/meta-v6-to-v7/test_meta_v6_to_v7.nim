@@ -14,7 +14,10 @@
 ## test sets the committed file's version byte back to 6 and requires that
 ## digest, so every member but `meta.dat`'s version is byte-identical to the
 ## version-6 recording, and it requires the upgrade of that image to give the
-## committed file back.  A fixture re-recorded later leaves this table.
+## committed file back.  A fixture re-recorded or regenerated later leaves
+## this table: `eme5/null_main.ct` and `eme5/one_puts.ct` are pinned by
+## `../ctfs-v4-to-v5/test_ctfs_v4_to_v5.nim` as the v4 -> v7 chain of their
+## kept originals, whose last step is this tool.
 
 when defined(nimPreviewSlimSystem):
   import std/[syncio, assertions]
@@ -54,10 +57,6 @@ const
       "b77546032bfeff400dea340c2ab22375e471e7054db765bc23581d3b8e47e8c8"),
     ("mcr/linux-x86_64/trace.ct",
       "e29225486db5b773197f9d77d93f4dc07a96a0fccf7354b7b7a86d3ca5bce721"),
-    ("mcr/macos-arm64/emulator/eme5/null_main.ct",
-      "fbde1b11d0f2e1abf76643e4b9c2b0e072c55498d7817b4984a5262c07b646f7"),
-    ("mcr/macos-arm64/emulator/eme5/one_puts.ct",
-      "cb59c7d4f1cccff7546938cd7014718fa9b1b29556280d315645ab6a97572ea6"),
     ("mcr/macos-arm64/emulator/eme5_inject/one_write.ct",
       "ff799913b7a1579499ceedadaeea6be7d15f4a122f64dd19b41f1f28546f3c56"),
     ("mcr/macos-arm64/emulator/eme5_predyld/one_write.ct",

@@ -16,7 +16,11 @@
 ## every root entry in slot order. `convertV4ToV5` writes those members, in the
 ## same order and under the same names, into a container created by the CURRENT
 ## writer with the source's block size, root-entry count, encryption byte and
-## shard count. It then reads every member back through the CURRENT reader and
+## shard count. The one exception is a member stored under a key the macOS
+## recorder later renamed (`member_renames.nim`, e.g. `event_log.dat`): the
+## current writer refuses a name outside the CTFS alphabet, so the lossy key
+## cannot be carried over, and the member is written under the name every
+## reader opens. It then reads every member back through the CURRENT reader and
 ## refuses the result unless each one is byte-identical to what the version-4
 ## walk produced. Member bytes are never interpreted: a member that is itself
 ## versioned (`meta.dat`, an event stream) keeps the version it was written with.
@@ -31,12 +35,14 @@ when defined(nimPreviewSlimSystem):
 import std/os
 import results
 import codetracer_ctfs/[types, base40, container]
+import ./member_renames
 
 const V4Version = 4'u8
 
 type
   V4Member* = object
     name*: string
+    key*: uint64     ## the stored key `name` decodes from
     bytes*: seq[byte]
 
   V4Container* = object
@@ -164,7 +170,7 @@ proc readV4Members*(data: openArray[byte]): Result[V4Container, string] =
       return err("root entry " & $i & ": name 0x" & $encoded &
         " does not survive a base40 round trip")
     let bytes = ?readV4MemberBytes(data, name, size, mapBlock, c.blockSize)
-    c.members.add V4Member(name: name, bytes: bytes)
+    c.members.add V4Member(name: name, key: encoded, bytes: bytes)
   ok(c)
 
 proc convertV4ToV5*(data: openArray[byte]): Result[seq[byte], string] =
@@ -175,18 +181,22 @@ proc convertV4ToV5*(data: openArray[byte]): Result[seq[byte], string] =
     return err("unknown encryption method " & $src.encryption)
   var dst = createCtfs(src.blockSize, src.maxRootEntries,
     CtfsEncryptionMethod(src.encryption), src.maxShards)
+  var names: seq[string]
   for m in src.members:
-    var f = ?dst.addFile(m.name)
+    let renamed = renamedMember(m.key)
+    names.add(if renamed.len > 0: renamed else: m.name)
+  for i, m in src.members:
+    var f = ?dst.addFile(names[i])
     if m.bytes.len > 0:
       ?dst.writeToFile(f, m.bytes)
-  let output = dst.toBytes()
+  let output = ?dst.finishCtfs()
 
   # Read back through the CURRENT reader — the one the suites use.
-  for m in src.members:
-    let back = readInternalFile(output, m.name, src.blockSize,
+  for i, m in src.members:
+    let back = readInternalFile(output, names[i], src.blockSize,
       src.maxRootEntries)
     if back.isErr:
-      return err("member " & m.name & " does not read back: " & back.error)
+      return err("member " & names[i] & " does not read back: " & back.error)
     if back.get != m.bytes:
       return err("member " & m.name & " reads back different bytes (" &
         $back.get.len & " vs " & $m.bytes.len & ")")

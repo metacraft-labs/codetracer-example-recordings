@@ -12,10 +12,17 @@ container version but 5.
   written with the current writer. Each converted container is read back
   through the current reader, and the converter refuses it unless every
   member matches.
-- `test_ctfs_v4_to_v5.nim` converts `testdata/null_main.v4.ct`, the
-  pre-conversion `eme5/null_main.ct`. It checks each member's length and
-  sha256 against a table computed by the `86ca226^` reader. It runs the same
-  check on the committed, converted fixture.
+- `test_ctfs_v4_to_v5.nim` converts `testdata/null_main.v4.ct` and
+  `testdata/one_puts.v4.ct`, the pre-conversion `eme5/null_main.ct` and
+  `eme5/one_puts.ct` (as committed at `50d4a69`). For `null_main` it checks
+  each member's length and sha256 against a table computed by the `86ca226^`
+  reader. It requires each committed fixture to be the whole chain below of
+  its original.
+- `member_renames.nim` lists the members the macOS recorder renamed after
+  these recordings were made (`t_start.*` in `e16f18457`, `event_log.dat` /
+  `.idx` in `40aa129e`). The old names are not storable CTFS names. The
+  version-4 to version-5 step writes such a member under its new name, because
+  the current writer refuses the old key.
 
 ```sh
 TF=../../../codetracer-trace-format-nim/src   # the workspace sibling
@@ -25,8 +32,11 @@ nim c -d:release --path:$TF ctfs_v4_to_v5.nim
 ```
 
 `meta_v3_to_v6.nim` is the second step for the same recordings. It upgrades a
-container's `meta.dat` from schema 3 to 6, moving the path list into
-`paths.dat`, and applies recorder `e16f18457`'s member renames. Every
+container's `meta.dat` from schema 3 to 6 and moves the path list into
+`paths.dat`. It writes `paths.dat` as one of the four interning tables, which a
+trace carries all four or none, so `funcs`, `types` and `varnames` are written
+empty, as the native recorder writes them. It applies the member renames to a
+version-5 container that still has the old keys. Every
 derivation is described in its header, and the result is verified through the
 current readers. The test runs both steps over the kept original and requires
 the committed fixture to be exactly the result.

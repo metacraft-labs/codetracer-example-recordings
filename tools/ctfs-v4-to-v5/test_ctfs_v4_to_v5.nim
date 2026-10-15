@@ -13,9 +13,17 @@
 ##
 ## `meta_v3_to_v6.nim` is tested on the same recording: its `meta.dat` must be
 ## accepted by the current `readMetaDat` with the version-3 fields (pinned
-## below), `paths.dat` must hold the version-3 path list, every other member
-## must still match the table, and the member renames of recorder `e16f18457`
-## must map each old lossy key to its storable name.  The committed fixture
+## below), the four interning tables must all be there (internal-files.md
+## "Interning Tables": all four or none) with `paths.dat` holding the
+## version-3 path list and the other three empty, every other member must
+## still match the table, and the member renames of recorders `e16f18457` and
+## `40aa129e` must map each old lossy key to its storable name.
+##
+## `testdata/one_puts.v4.ct` is the version-4 `eme5/one_puts.ct` as committed
+## at `50d4a69` (sha256 pinned below, taken from git, not from the tool). It
+## stores its event log under the lossy keys of `event_log.dat` /
+## `event_log.idx`, which the current writer cannot store, so its chain also
+## covers the renames; its committed fixture is pinned the same way.  The committed fixture
 ## must be exactly v4 -> v5 -> meta v6 -> meta v7 of the kept original, byte
 ## for byte, so a later edit to that file fails here too.  The last step is
 ## `../meta-v6-to-v7` (codetracer-trace-format-nim `20ba929`, after which the
@@ -33,6 +41,7 @@ import std/[options, os, strutils, unittest]
 import results, nimcrypto/sha2
 import codetracer_ctfs/[types, base40, container]
 import codetracer_trace_writer/[meta_dat, interning_table]
+import native_decoder
 import ./ctfs_v4_to_v5
 import ./meta_v3_to_v6
 import "../meta-v6-to-v7/meta_v6_to_v7"
@@ -42,6 +51,12 @@ const
   v4Input = here / "testdata" / "null_main.v4.ct"
   convertedFixture = here / ".." / ".." / "mcr" / "macos-arm64" / "emulator" /
     "eme5" / "null_main.ct"
+  onePutsV4 = here / "testdata" / "one_puts.v4.ct"
+  # `git show 50d4a69:mcr/macos-arm64/emulator/eme5/one_puts.ct | sha256sum`
+  onePutsV4Sha256 =
+    "4F95B08536F64769DE9CFE851C2D80A5C7739594A561412E045168B2A4EC4A66"
+  onePutsFixture = here / ".." / ".." / "mcr" / "macos-arm64" / "emulator" /
+    "eme5" / "one_puts.ct"
 
   # name, length, sha256 — from the `86ca226^` reader, in root-slot order.
   expected = [
@@ -137,6 +152,13 @@ suite "ctfs v4 -> v5":
         check meta.get.program == "/tmp/eme5rec/null_main"
         check meta.get.recorderId == "mcr-interpose"
         check meta.get.mcrFields.isSome
+      check detectNativeBundle(asV7.get).isOk
+      check interningSetRefusal(data, 128) == ""
+      for table in ["funcs", "types", "varnames"]:
+        let t = initInterningTableReader(data, table, 4096, 128)
+        check t.isOk
+        if t.isOk:
+          check t.get.count == 0
       let paths = initInterningTableReader(data, "paths", 4096, 128)
       check paths.isOk
       if paths.isOk:
@@ -155,7 +177,7 @@ suite "ctfs v4 -> v5":
       check again.isErr
       check "not 3" in again.error
 
-  test "the e16f18457 renames map each old lossy key to its storable name":
+  test "the e16f18457 and 40aa129e renames map each old lossy key to its storable name":
     for (old, new) in MemberRenames:
       check not base40Encodable(old)
       check base40Encodable(new)
@@ -177,6 +199,45 @@ suite "ctfs v4 -> v5":
       if v7.isOk:
         check readCtfsFromFile(convertedFixture).get == v7.get
         checkMembersExceptMeta(v7.get)
+
+  test "one_puts: the kept original is the version-4 file committed at 50d4a69":
+    check $sha256.digest(readCtfsFromFile(onePutsV4).get) == onePutsV4Sha256
+
+  test "one_puts: the event log is renamed and every other member kept":
+    let src = readV4Members(readCtfsFromFile(onePutsV4).get)
+    check src.isOk
+    if src.isOk:
+      var keys: seq[uint64]
+      for m in src.get.members: keys.add m.key
+      check base40Encode("event_log.dat") in keys
+      check base40Encode("event_log.idx") in keys
+      let v5 = convertV4ToV5(readCtfsFromFile(onePutsV4).get)
+      check v5.isOk
+      if v5.isOk:
+        for m in src.get.members:
+          let renamed = renamedMember(m.key)
+          let name = if renamed.len > 0: renamed else: m.name
+          let got = readInternalFile(v5.get, name, src.get.blockSize,
+                                     src.get.maxRootEntries)
+          check got.isOk
+          if got.isOk:
+            check got.get == m.bytes
+        check readInternalFile(v5.get, "eventlog.dat", 4096, 128).isOk
+        check readInternalFile(v5.get, "eventlog.idx", 4096, 128).isOk
+
+  test "one_puts: the committed fixture is exactly the v4 -> v7 chain":
+    let v5 = convertV4ToV5(readCtfsFromFile(onePutsV4).get)
+    check v5.isOk
+    if v5.isOk:
+      let up = upgradeMetaDatV3(v5.get)
+      check up.isOk
+      if up.isOk:
+        check interningSetRefusal(up.get, 128) == ""
+        let v7 = upgradeMetaDatV6(up.get)
+        check v7.isOk
+        if v7.isOk:
+          check readCtfsFromFile(onePutsFixture).get == v7.get
+          check detectNativeBundle(v7.get).isOk
 
   test "a container that is not version 4 is refused, naming its version":
     let v5 = convertV4ToV5(readCtfsFromFile(v4Input).get).get
