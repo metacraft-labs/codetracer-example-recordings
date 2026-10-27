@@ -45,6 +45,7 @@ where it honestly stops.
 | `emulator/eme5_predyld/` | `one_write`             | injected record + in-child pre-dyld installer   |
 | `emulator/eme_ete_2006/` | `one_write`             | injected record + M9c + Apple ETE (archival)    |
 | `emulator/eme_m9c_2006/` | `one_write`             | injected record + M9c whole-program svc capture |
+| `emulator/eme_m9c_bigdylib/` | `one_write`         | as `eme_m9c_2006`, with a >1 MiB injected dylib |
 
 These are device-bound: an Apple Silicon Mac with SIP disabled, an entitled
 recorder, and a quiet host. See

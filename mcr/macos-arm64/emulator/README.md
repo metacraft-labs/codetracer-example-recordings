@@ -19,6 +19,7 @@ them record the same `one_write` victim.
 | `eme5_inject/` | `one_write` | `ct_cli record --experimental-no-sip-mode` + `CT_STAGE0_INCHILD_SETUP=0` | The cp0-seeded T0 (`__dyld_start`) inject seed; **the no-founding-stream fallback path** — the only fixture that reaches an `svc` with `predyldRecordCount == 0`. Since founding capture became the record default (2026-07-29) the founding-free shape is an explicit opt-out, and the fallback serves only pre-promotion recordings |
 | `eme5_predyld/` | `one_write` | inject + `CT_STAGE0_INCHILD_SETUP=1` (now also the default), lean interpose dylib | The in-child pre-dyld installer, T0 disk re-derivation, and founding svcs SERVED from the recording at scale: 1945 events consumed, 1898 founding serves, 74 out-param copyouts |
 | `eme_m9c_2006/` | `one_write` | inject + M9c + `CT_ARC4_HOOK=1` | Whole-program svc capture via the reach-independent detour tier; the cache-dyld re-arm; the current replay frontier |
+| `eme_m9c_bigdylib/` | `one_write` | as `eme_m9c_2006`, installed with `CT_REC_FIXTURE_NAME=eme_m9c_bigdylib` | An injected interpose dylib over 1 MiB: its two whole-file founding `mmap`s (1.1 MiB events) are in the stream, `tstart.bpat` is the final bootstrap-patch record (5 images + interpose bindings), none of the recorder's own syscalls is in the founding stream, and replay reaches the program's exit (`one\n`) |
 
 `eme_ete_2006/` (inject + M9c + `CT_PREDYLD_ETE=1`) was **retired** on
 2026-07-28. It had no code consumer, no committed driver, and was not

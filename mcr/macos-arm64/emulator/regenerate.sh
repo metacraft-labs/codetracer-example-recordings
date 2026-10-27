@@ -70,6 +70,12 @@ regen_one() {
 	eme_m9c_2006)
 		run_driver eme_m9c_2006 ct_cli/tests/record_macos_eme_m9c_2006.nim
 		;;
+	eme_m9c_bigdylib)
+		# Same driver and configuration as eme_m9c_2006, installed under its own
+		# name (see that fixture's one_write.info.txt for what it pins).
+		CT_REC_FIXTURE_NAME=eme_m9c_bigdylib \
+			run_driver eme_m9c_bigdylib ct_cli/tests/record_macos_eme_m9c_2006.nim
+		;;
 	eme5)
 		# Recorded with the plain interpose recorder:
 		#   ct_cli record -o <out>.ct -- <victim>
@@ -93,7 +99,7 @@ regen_one() {
 	*)
 		echo "ERROR: unknown fixture '$1'." >&2
 		echo "       Known: eme5 eme5_inject eme5_predyld" >&2
-		echo "              eme_m9c_2006  (retired: eme_ete_2006)" >&2
+		echo "              eme_m9c_2006 eme_m9c_bigdylib  (retired: eme_ete_2006)" >&2
 		exit 1
 		;;
 	esac
@@ -106,6 +112,7 @@ else
 	regen_one eme5_inject
 	regen_one eme5_predyld
 	regen_one eme_m9c_2006
+	regen_one eme_m9c_bigdylib
 	echo "NOTE: eme5 was skipped — it has no committed driver. Name it"
 	echo "      explicitly to see what it would take."
 fi

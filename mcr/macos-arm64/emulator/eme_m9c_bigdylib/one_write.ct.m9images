@@ -1,0 +1,5 @@
+0x00018EAE4000:3:1:detour:arc4
+0x00018E878000:169:1:detour:cache-dyld
+0x0001003B0000:405:1:island
+0x00018EC11000:522:1:detour
+0x000291CDB000:4:1:detour
