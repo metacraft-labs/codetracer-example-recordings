@@ -21,7 +21,17 @@ const MemberRenames* = [
   ("t_start.predyld_blob", "tstart.pdyld"),
   ("cp0.predyld.syscalls", "cp0.pdysys"),
   # recorder 40aa129e: the event log's old names -> the names readers open
-  ("event_log.dat", "eventlog.dat"), ("event_log.idx", "eventlog.idx")]
+  ("event_log.dat", "eventlog.dat"), ("event_log.idx", "eventlog.idx"),
+  # recorder 40aa129e: the rest of that commit's renames.  They were left out
+  # here, so `eme_m9c_2006` kept its record configuration under the lossy key
+  # of `recordcfg.bin` that no current reader opens.  Without that member the
+  # emulator cannot resolve the founding stub's stack-pointer stamps to
+  # threads, and its strong-kernel replay of that recording stopped at
+  # cursor 4.
+  ("recordcfg.bin", "recordcfg"),
+  ("cp.vdso_getrandom.bin", "cp.vgrnd.bin"), ("cp.vdso_time.bin", "cp.vtime.bin"),
+  ("cp.vgrdraw.bin", "cp.vgrdw.bin"), ("cp.tidmap.bin", "cp.tids.bin"),
+  ("cpthreads.bin", "cpthrds.bin"), ("cpidx_full.idx", "cpidxall.idx")]
 
 proc renamedMember*(storedKey: uint64): string =
   ## The storable name for a member stored under an old lossy key; "" when the

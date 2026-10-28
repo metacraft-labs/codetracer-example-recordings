@@ -22,7 +22,9 @@
 ## committed file back.  A fixture re-recorded or regenerated later leaves
 ## this table: `eme5/null_main.ct` and `eme5/one_puts.ct` are pinned by
 ## `../ctfs-v4-to-v5/test_ctfs_v4_to_v5.nim` as the v4 -> v7 chain of their
-## kept originals, whose last step is this tool.
+## kept originals, whose last step is this tool, and so is
+## `eme_m9c_2006/one_write.ct`, as its version-6 file here with one member
+## key renamed.
 
 when defined(nimPreviewSlimSystem):
   import std/[syncio, assertions]
@@ -66,8 +68,6 @@ const
       "ff799913b7a1579499ceedadaeea6be7d15f4a122f64dd19b41f1f28546f3c56"),
     ("mcr/macos-arm64/emulator/eme5_predyld/one_write.ct",
       "ad326ac2e234a4f68f40ca6c6a2f1936f9557a0cd8fd2b7a9d6b565ac4745a9e"),
-    ("mcr/macos-arm64/emulator/eme_m9c_2006/one_write.ct",
-      "c02ddc8910bf3e868ceee816040e888e34fe9f01909c804ca0c4e1232c1a7f8c"),
     ("mcr/macos-arm64/trace-portable.ct",
       "97cd0033fd4ac896b1311e5c9c7be46c15a4fa53232407faabbf0e6b566a3fb7"),
     ("mcr/macos-arm64/trace.ct",

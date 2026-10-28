@@ -17,10 +17,15 @@ container version but 5.
   `eme5/one_puts.ct` (as committed at `50d4a69`). For `null_main` it checks
   each member's length and sha256 against a table computed by the `86ca226^`
   reader. It requires each committed fixture to be the whole chain below of
-  its original.
+  its original. Its original is not kept for `eme_m9c_2006/one_write.ct`
+  (29 MB), so that fixture is pinned to its version-6 file at `76e71a4^`:
+  the two differ only in the version byte and in the key of `recordcfg`,
+  which that file kept under `recordcfg.bin`'s lossy key. No fixture may
+  keep a member under an old key.
 - `member_renames.nim` lists the members the macOS recorder renamed after
-  these recordings were made (`t_start.*` in `e16f18457`, `event_log.dat` /
-  `.idx` in `40aa129e`). The old names are not storable CTFS names. The
+  these recordings were made (`t_start.*` in `e16f18457`; `event_log.dat` /
+  `.idx`, `recordcfg.bin` and the five `cp*` sidecars in `40aa129e`). The old
+  names are not storable CTFS names. The
   version-4 to version-5 step writes such a member under its new name, because
   the current writer refuses the old key.
 

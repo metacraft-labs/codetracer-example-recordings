@@ -37,7 +37,8 @@
 ## Recorder `e16f18457` (2026-10-04) renamed the seed and sidecar members in
 ## the writer and every reader (`t_start.mem` -> `tstart.mem`, ...), and
 ## recorder `40aa129e` (the same day) left `eventlog.dat` / `eventlog.idx` as
-## the only event-log names any reader opens.  The renames are reproduced here
+## the only event-log names any reader opens and renamed `recordcfg.bin` and
+## five `cp*` sidecars (`cp.tidmap.bin` -> `cp.tids.bin`, ...).  The renames are reproduced here
 ## exactly: a member is renamed iff its stored key equals the key the old
 ## writer computed for an old name in that table (the keys of the table's
 ## names are pairwise distinct, so the match is exact).  The bytes are not

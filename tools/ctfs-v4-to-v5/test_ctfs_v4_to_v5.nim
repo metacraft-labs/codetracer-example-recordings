@@ -31,6 +31,13 @@
 ## read through them as that step's output, which differs in its version byte
 ## alone.
 ##
+## `eme_m9c_2006/one_write.ct` went through the same chain before
+## `member_renames.nim` carried all of `40aa129e`'s renames, and kept its
+## record configuration under `recordcfg.bin`'s lossy key.  Its version-4
+## original is not kept, so the regenerated fixture is pinned to that first
+## conversion with the one key renamed, and every committed macOS fixture is
+## checked for a member left under an old key.
+##
 ## Run:  nim c -r --path:<codetracer-trace-format-nim>/src test_ctfs_v4_to_v5.nim
 ## (needs nimcrypto, which codetracer-trace-format-nim's environment carries).
 
@@ -57,6 +64,13 @@ const
     "4F95B08536F64769DE9CFE851C2D80A5C7739594A561412E045168B2A4EC4A66"
   onePutsFixture = here / ".." / ".." / "mcr" / "macos-arm64" / "emulator" /
     "eme5" / "one_puts.ct"
+  m9cFixture = here / ".." / ".." / "mcr" / "macos-arm64" / "emulator" /
+    "eme_m9c_2006" / "one_write.ct"
+  # `git show 76e71a4^:mcr/macos-arm64/emulator/eme_m9c_2006/one_write.ct |
+  # sha256sum`: the version-6 file the first conversion made, with the record
+  # configuration still under the lossy key of `recordcfg.bin`.
+  m9cV6Sha256 =
+    "c02ddc8910bf3e868ceee816040e888e34fe9f01909c804ca0c4e1232c1a7f8c"
 
   # name, length, sha256 — from the `86ca226^` reader, in root-slot order.
   expected = [
@@ -189,6 +203,32 @@ suite "ctfs v4 -> v5":
       for j in i + 1 ..< keys.len:
         check keys[i] != keys[j]
 
+  test "no committed macOS fixture keeps a member under a renamed recorder key":
+    # Only the two `eme5` recordings are pinned to a kept original (below), so
+    # the others are checked by what the chain must have made of them: every
+    # member under the name current readers open.  A member left under an
+    # old key is not an error anywhere; its readers find nothing and fall
+    # back.  `eme_m9c_2006` kept `recordcfg.bin`'s key that way, and with
+    # no record configuration its strong-kernel replay routed founding events
+    # by raw stack pointer.
+    let root = here / ".." / ".." / "mcr" / "macos-arm64" / "emulator"
+    var containers = 0
+    for path in walkDirRec(root):
+      if not path.endsWith(".ct"): continue
+      containers += 1
+      let data = readCtfsFromFile(path).get
+      let maxRoot = readU32LE(data, 12)
+      for i in 0 ..< int(maxRoot):
+        let key = readU64LE(data, HeaderSize + ExtHeaderSize + i * FileEntrySize + 16)
+        if key == 0: continue
+        let renamed = renamedMember(key)
+        if renamed.len > 0:
+          checkpoint path.relativePath(root) & ": member " & base40Decode(key) &
+            " is stored under an old key; readers open " & renamed
+        check renamed.len == 0
+    # Six recordings, so a walk that finds nothing cannot pass.
+    check containers == 6
+
   test "the committed fixture is exactly that conversion, then meta v6 -> v7":
     let v5 = convertV4ToV5(readCtfsFromFile(v4Input).get).get
     let up = upgradeMetaDatV3(v5)
@@ -238,6 +278,32 @@ suite "ctfs v4 -> v5":
         if v7.isOk:
           check readCtfsFromFile(onePutsFixture).get == v7.get
           check detectNativeBundle(v7.get).isOk
+
+  test "eme_m9c_2006: the fixture is its first conversion with recordcfg renamed":
+    # Its version-4 original (29 MB) is not kept here, so the regenerated
+    # fixture is pinned to the conversion committed before it: setting the
+    # `recordcfg` key back to `recordcfg.bin`'s lossy key and `meta.dat`'s
+    # version byte back to 6 must give that file exactly.  Every other byte,
+    # every member's included, is then the first conversion's.
+    var data = readCtfsFromFile(m9cFixture).get
+    let blockSize = readU32LE(data, 8)
+    let maxRoot = readU32LE(data, 12)
+    var slots: seq[int]
+    for i in 0 ..< int(maxRoot):
+      let at = HeaderSize + ExtHeaderSize + i * FileEntrySize + 16
+      if readU64LE(data, at) == base40Encode("recordcfg"): slots.add at
+    check slots.len == 1
+    check renamedMember(base40Encode("recordcfg.bin")) == "recordcfg"
+    if slots.len == 1:
+      let old = base40Encode("recordcfg.bin")
+      for b in 0 ..< 8:
+        data[slots[0] + b] = byte((old shr (8 * b)) and 0xFF)
+      let meta = locateMember(data, "meta.dat", blockSize, maxRoot)
+      check meta.isOk
+      if meta.isOk:
+        check data[meta.get[0].at + 4] == 7'u8
+        data[meta.get[0].at + 4] = 6
+        check toLowerAscii($sha256.digest(data)) == m9cV6Sha256
 
   test "a container that is not version 4 is refused, naming its version":
     let v5 = convertV4ToV5(readCtfsFromFile(v4Input).get).get
