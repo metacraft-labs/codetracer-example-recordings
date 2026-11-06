@@ -1,4 +1,9 @@
-# Verify every committed recording with both trace readers, on every change.
+# Verify every committed recording with both trace readers, on every change
+# that reaches a PR-gated branch: pushes to `dev`/`stable` and pull requests
+# into them. No CI runs on `agents` or on `agents-to-dev-*` pushes
+# (metacraft-dev-guidelines ci-workflow-standards.md "No CI on `agents`"); the
+# pre-commit hook below is the gate there, and this job runs once more on the
+# promotion pull request into `dev`.
 #
 # `.github/scripts/verify-all-recordings.sh` runs each committed `.ct` through
 # `verify-recordings.sh`: container v5 / `meta.dat` v7, the Nim reader
@@ -20,7 +25,9 @@ name: "Verify recordings"
 
 on:
   push:
+    branches: [dev, stable]
   pull_request:
+    branches: [dev, stable]
   workflow_dispatch:
     inputs:
       codetracer_ref:
