@@ -1,0 +1,70 @@
+# Verify every committed recording with both trace readers, on every change.
+#
+# `.github/scripts/verify-all-recordings.sh` runs each committed `.ct` through
+# `verify-recordings.sh`: container v5 / `meta.dat` v7, the Nim reader
+# (`ct-print --summary`), the Rust readers (`codetracer_trace_util
+# verify-trace`), the credential scan and the member-name check. The files in
+# `.github/recordings-not-yet-readable.txt` must instead be refused by both
+# readers for their container version. The readers are built from the
+# `codetracer-trace-format-nim` and `codetracer-trace-format` revisions
+# codetracer's repro.lock pins (`provision-readers.sh`), the readers codetracer
+# opens these recordings with.
+#
+# Both readers, because each has accepted what the other refuses: two
+# converted fixtures carrying `paths.dat` without the other three interning
+# tables passed every check made through `ct-print`, and the Rust readers
+# refused them. The pre-commit hook runs the same check on a commit that
+# changes a recording (`pre-commit-verify-recordings.sh`).
+
+name: "Verify recordings"
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      codetracer_ref:
+        description: "codetracer branch, tag or SHA whose repro.lock pins the readers"
+        required: false
+        default: "agents"
+
+concurrency:
+  group: verify-recordings-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CODETRACER_REF: ${{ github.event.inputs.codetracer_ref || 'agents' }}
+
+jobs:
+  verify-recordings:
+    runs-on: [self-hosted, nixos]
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Set up Nix
+        uses: metacraft-labs/devops-modules/.github/setup-nix@dev
+        with:
+          trusted-public-keys: ${{ vars.ATTIC_TRUSTED_PUBLIC_KEY }}
+          substituters: ${{ vars.ATTIC_SUBSTITUTER }}
+
+      - name: Provision the pinned readers
+        run: bash .github/scripts/provision-readers.sh "$CODETRACER_REF" ..
+
+      - name: Build both readers and the checkers
+        run: bash .github/scripts/build-verify-tools.sh ../ct-verify-tools ../codetracer-trace-format-nim ../codetracer-trace-format
+
+      - name: Verify every committed recording with both readers
+        run: |
+          bash .github/scripts/verify-all-recordings.sh \
+            ../ct-verify-tools/ct-print ../ct-verify-tools/ct-credential-scan \
+            ../ct-verify-tools/ct-member-names ../ct-verify-tools/codetracer_trace_util

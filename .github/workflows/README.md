@@ -34,21 +34,106 @@ fails loudly saying which file to write
 (`ct_cli/tests/record_macos_eme5.nim`). `eme_ete_2006` is archival — its
 scratch driver no longer exists in any tree.
 
+## `regen-device-recordings.yml` — the macOS, iOS and Windows fixtures
+
+`regen-device-recordings.yml` records `mcr/macos-arm64` (platform and
+emulator), `mcr/ios-arm64` and `mcr/windows-x86_64` with the recorder
+**codetracer pins**: the `codetracer-native-recorder` revision in codetracer's
+committed `repro.lock` at the `codetracer_ref` input (default `agents`), with
+its siblings at the revisions the locks name
+(`.github/scripts/provision-recorder.sh`). The optional `recorder_ref` input
+builds a named recorder revision instead, with its siblings from the
+recorder's own lock, to verify it on every platform before codetracer pins
+it; the pins file then says so. Each job checks what it produced is
+container v5 / `meta.dat` v7, opens with `ct-print` from the pinned
+`codetracer-trace-format-nim`, and stores every member under a storable CTFS
+name (`.github/scripts/ct_member_names.nim`: at most 12 characters from
+`\0 0-9 a-z . / -`) (`.github/scripts/verify-recordings.sh`), and
+uploads the recordings, the pins and the logs as an artifact. It commits
+nothing and opens no pull request: the person who dispatched it downloads the
+artifact, re-verifies it and commits it.
+
+**A recording captures the recorded program's environment**, so every
+recording here is made without the job's credentials: checkouts do not
+persist a credential, each recording step first sources
+`.github/scripts/drop-credentials.sh` (which also refuses to go on if a
+credential-shaped value survives), and the regenerate scripts record under
+`env -i` (a cleared environment on Windows). `verify-recordings.sh` then fails
+any recording in which `.github/scripts/ct_credential_scan.nim` finds a token,
+an authorization header or a private key, in the raw bytes, in any member or
+in any zstd frame inside them; `test_ct_credential_scan.nim` plants fakes and
+checks the gate catches each one. On 2026-10-03 three fixtures recorded before
+these layers existed published a CI installation token (since revoked).
+
+**The `windows-x86_64` job records under the runner's account, and checks
+for personal data and source code.** A Windows recording captures more of
+the recording account than its environment: the program's DLLs read per-user
+registry values (a recording made under a developer's account captured
+`C:\Users\<user>\...\INetCache` from HKCU, 2026-10-11). So the fixture is
+regenerated here, on a self-hosted Windows runner whose service account
+(NETWORK SERVICE, profile `C:\Windows\ServiceProfiles\NetworkService`) names
+nobody. Owner decision 2026-10-12: the recording may carry the compiled
+recorder DLLs (the stage-0 runtime is mapped into the recorded process), but
+never source code or personal data. After `verify-recordings.sh` the job runs:
+
+- `.github/scripts/ct_leak_scan.nim`: every member read through the
+  trace-format reader (so a zstd frame whose blocks are not contiguous is
+  reassembled), every member that is itself a container, every zstd frame, and
+  the container bytes no member owns, and the seam between successive frames
+  (the recorder seals frames at byte counts, so a path can straddle two), in
+  ASCII and UTF-16LE. It refuses a home directory other than an allowed CI
+  account's (in any script), an e-mail address, the scanning account's own
+  identity when that is a personal account, and source text other than the
+  fixture program's own (`programs/ct_fixture_prog.c` is public); its report
+  prints none of them. It reports,
+  without refusing, CodeView PDB paths, source-file names (the recorder DLLs'
+  assertion messages name their modules) and bytes it could not decode.
+  `test_ct_leak_scan.nim` plants each shape and checks the scan refuses it.
+- `.github/scripts/verify-windows-recordings.ps1`: both files declare the
+  `atomic_total_order` turns, the portable export carries the pinned id, and
+  `ct-mcr replay-worker --verify --replay-strict` replays each to completion
+  (in the job, beside the stage-0 runtime the recording used).
+
+The recordings are uploaded only when the credential and leak scans pass,
+because this repository's run artifacts are public; the logs always are.
+Run it with `-f platforms=windows-x86_64`; add `-f recorder_ref=<sha>` to
+record with a recorder revision codetracer does not pin yet.
+
+Its `linux-x86_64` job also records the two ct-mcr fixtures that live in
+codetracer itself (`src/db-backend/tests/fixtures/xos/xos_hello.ct`, unslimmed,
+and `src/tests/gui/tests/request-panel/fixtures/native_nginx/nginx.ct`). ct-mcr
+records on Linux only where a process can enable **CPUID faulting** (Intel, or
+AMD Zen 4 and later), so the job targets the bare-metal Linux hosts (all Intel)
+and fails by name, before building, when `.github/scripts/probe-cpuid-faulting.c`
+says the feature is absent.
+
+The emulator job and the iOS job check their precondition first (SIP
+disabled; Xcode with an iOS simulator) and fail with an explicit prerequisite
+error when the runner lacks it, before building anything. The requested platform
+remains unqualified until real regeneration and verification succeed.
+
+Run it from a shell:
+
+```bash
+gh workflow run regen-device-recordings.yml --ref agents \
+  -f codetracer_ref=agents -f platforms=all
+```
+
 All workflows are **`workflow_dispatch`** (manual). Each has an optional
 monthly `schedule` cron that is commented out — enable it per platform if
 unattended refresh is wanted (except `android-arm64`, which is physically
 device-bound and intentionally manual-only).
 
-| Workflow file                                | Fixture(s)                                | Runner it needs                                              | Regen script                              |
-| -------------------------------------------- | ----------------------------------------- | ------------------------------------------------------------ | ----------------------------------------- |
-| `regen-mcr-linux-x86_64.yml`                 | `mcr/linux-x86_64`                        | `[self-hosted, nixos]`                                       | `mcr/linux-x86_64/regenerate.sh`          |
-| `regen-mcr-linux-arm64.yml`                  | `mcr/linux-arm64`                         | `[self-hosted, nixos, aarch64-linux]`                        | `mcr/linux-arm64/regenerate.sh`           |
-| `regen-mcr-windows-x86_64.yml`               | `mcr/windows-x86_64`                      | `[self-hosted, windows]` (VS Build Tools)                    | `mcr/windows-x86_64/regenerate.ps1`       |
-| `regen-mcr-macos-arm64.yml` (job `platform`) | `mcr/macos-arm64`                         | `[self-hosted, macos]` (Apple Silicon)                       | `mcr/macos-arm64/regenerate.sh`           |
-| `regen-mcr-macos-arm64.yml` (job `emulator`) | `mcr/macos-arm64/emulator` (minus `eme5`) | `[self-hosted, macos, sip-off]`                              | `mcr/macos-arm64/emulator/regenerate.sh`  |
-| `regen-mcr-ios-arm64.yml`                    | `mcr/ios-arm64`                           | `[self-hosted, macos]` with Xcode + iOS simulator            | `mcr/ios-arm64/regenerate.sh`             |
-| `regen-mcr-android-arm64.yml`                | `mcr/android-arm64`                       | `[self-hosted, android]` with adb device/AVD + NDK           | `mcr/android-arm64/regenerate.sh`         |
-| `regen-rr-language-recordings.yml`           | `rust/`, `c/`, `go/`, `nim/` `flow_test/` | `[self-hosted, nixos, x86-64-v2, bare-metal]` (rr needs PMU) | `<lang>/flow_test/regenerate.sh` (matrix) |
+| Workflow file                                        | Fixture(s)                                | Runner it needs                                                            | Regen script                              |
+| ---------------------------------------------------- | ----------------------------------------- | -------------------------------------------------------------------------- | ----------------------------------------- |
+| `regen-mcr-linux-x86_64.yml`                         | `mcr/linux-x86_64`                        | `[self-hosted, nixos]`                                                     | `mcr/linux-x86_64/regenerate.sh`          |
+| `regen-mcr-linux-arm64.yml`                          | `mcr/linux-arm64`                         | `[self-hosted, nixos, aarch64-linux]`                                      | `mcr/linux-arm64/regenerate.sh`           |
+| `regen-device-recordings.yml` (job `windows-x86_64`) | `mcr/windows-x86_64`                      | `[self-hosted, windows, x64, dev-env-ready]` (VS Build Tools, the DIY Nim) | `mcr/windows-x86_64/regenerate.ps1`       |
+| `regen-mcr-macos-arm64.yml` (job `platform`)         | `mcr/macos-arm64`                         | `[self-hosted, macos]` (Apple Silicon)                                     | `mcr/macos-arm64/regenerate.sh`           |
+| `regen-mcr-macos-arm64.yml` (job `emulator`)         | `mcr/macos-arm64/emulator` (minus `eme5`) | `[self-hosted, macos, sip-off]`                                            | `mcr/macos-arm64/emulator/regenerate.sh`  |
+| `regen-mcr-ios-arm64.yml`                            | `mcr/ios-arm64`                           | `[self-hosted, macos]` with Xcode + iOS simulator                          | `mcr/ios-arm64/regenerate.sh`             |
+| `regen-mcr-android-arm64.yml`                        | `mcr/android-arm64`                       | `[self-hosted, android]` with adb device/AVD + NDK                         | `mcr/android-arm64/regenerate.sh`         |
+| `regen-rr-language-recordings.yml`                   | `rust/`, `c/`, `go/`, `nim/` `flow_test/` | `[self-hosted, nixos, x86-64-v2, bare-metal]` (rr needs PMU)               | `<lang>/flow_test/regenerate.sh` (matrix) |
 
 ## How each job works
 
@@ -96,11 +181,15 @@ the workflows do not weaken it — they only invoke the scripts unchanged.
 - **ios-arm64** — records against the iOS _simulator_ (arm64-apple-ios-
   simulator), so it needs a macOS runner with Xcode + the iOS simulator
   SDK. The job fails fast if `xcrun simctl` is unavailable.
-- **windows-x86_64** — the sibling repos' existing "Windows Tests" workflow
-  still uses the hosted `windows-latest` image; this job targets
-  `[self-hosted, windows]` because it needs the full ct-mcr toolchain. If
-  the self-hosted Windows pool is not yet online, switch `runs-on` to
-  `windows-latest` (ensure VS Build Tools are installed).
+- **windows-x86_64** — recorded by the `windows-x86_64` job of
+  `regen-device-recordings.yml` (the per-platform `regen-mcr-windows-x86_64.yml`
+  is retired: it could not build the stage-0 runtime a Windows recording
+  needs, and it opened a pull request). The job targets the persistent
+  Windows runners (`win-ci-bare-001`, `win-ci-vm-001`), which run as
+  NETWORK SERVICE; the ephemeral Windows pools are disabled. With
+  `CI_RUNNER_MODE=github-hosted` it runs on `windows-latest`, whose account
+  (`runneradmin`) the leak scan allows; GARM's ephemeral Windows account
+  (`runner`) is allowed too. Any other account under `C:\Users\` is refused.
 - **linux-arm64** — like linux-x86_64 but records on an aarch64 Linux host
   (the ct-mcr interpose backend records the host-architecture binary).
   `regen-mcr-linux-arm64.yml` mirrors the x86_64 workflow.
@@ -145,3 +234,26 @@ and will fail at the first step. **Infra follow-up:** register this repo
 with the CI token-provider app and grant it access to the `codetracer` and
 `codetracer-native-recorder` repos, and set the Attic vars — mirroring the
 `codetracer` / `codetracer-native-recorder` setup.
+
+## `verify-recordings.yml` — every committed recording, both readers
+
+Every push and pull request runs `.github/scripts/verify-all-recordings.sh`
+over every committed `.ct`. Each file must be container v5 / `meta.dat` v7,
+open with the Nim reader (`ct-print --summary`) and with the Rust readers
+(`codetracer_trace_util verify-trace`), carry no credential, and store every
+member under a storable name. The readers are built from the
+`codetracer-trace-format-nim` and `codetracer-trace-format` revisions that
+codetracer's `repro.lock` pins (`provision-readers.sh`,
+`build-verify-tools.sh`). The files listed in
+`.github/recordings-not-yet-readable.txt` (the container-v3 Android and iOS
+recordings, and the version-4 converter inputs under
+`tools/ctfs-v4-to-v5/testdata/`) must instead be refused by both readers for
+their container version. A listed file that opens fails the check until its
+line is removed.
+
+The check uses both readers because a check through one reader passes
+whatever that reader accepts. Two converted `eme5` fixtures carried
+`paths.dat` without the other three interning tables. `ct-print` opened them
+and the Rust readers refused them. The pre-commit hook
+`verify-committed-recordings` (`pre-commit-verify-recordings.sh`) runs the
+same check on the staged files when a commit changes a recording.

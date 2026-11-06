@@ -38,13 +38,14 @@ replay** and **lockstep-diff** suites in `codetracer-native-recorder` — the
 suites that pin how far the emulator gets through a real macOS bring-up and
 where it honestly stops.
 
-| Directory                | Victim                  | Recorded via                                    |
-| ------------------------ | ----------------------- | ----------------------------------------------- |
-| `emulator/eme5/`         | `null_main`, `one_puts` | `ct_cli record` (interpose)                     |
-| `emulator/eme5_inject/`  | `one_write`             | injected record (`--experimental-no-sip-mode`)  |
-| `emulator/eme5_predyld/` | `one_write`             | injected record + in-child pre-dyld installer   |
-| `emulator/eme_ete_2006/` | `one_write`             | injected record + M9c + Apple ETE (archival)    |
-| `emulator/eme_m9c_2006/` | `one_write`             | injected record + M9c whole-program svc capture |
+| Directory                    | Victim                  | Recorded via                                    |
+| ---------------------------- | ----------------------- | ----------------------------------------------- |
+| `emulator/eme5/`             | `null_main`, `one_puts` | `ct_cli record` (interpose)                     |
+| `emulator/eme5_inject/`      | `one_write`             | injected record (`--experimental-no-sip-mode`)  |
+| `emulator/eme5_predyld/`     | `one_write`             | injected record + in-child pre-dyld installer   |
+| `emulator/eme_ete_2006/`     | `one_write`             | injected record + M9c + Apple ETE (archival)    |
+| `emulator/eme_m9c_2006/`     | `one_write`             | injected record + M9c whole-program svc capture |
+| `emulator/eme_m9c_bigdylib/` | `one_write`             | as `eme_m9c_2006`, with a >1 MiB injected dylib |
 
 These are device-bound: an Apple Silicon Mac with SIP disabled, an entitled
 recorder, and a quiet host. See

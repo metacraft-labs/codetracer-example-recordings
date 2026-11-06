@@ -5,6 +5,9 @@
 #   2. trace-portable.ct — enriched portable trace with binaries,
 #      debug symbols, and source files (for GUI E2E tests)
 #
+# Native commands (cl, ct-mcr) are checked by exit code: PowerShell's
+# $ErrorActionPreference does not stop on a failing executable.
+#
 # Prerequisites:
 #   - Windows x86_64 host
 #   - Visual Studio Build Tools (provides cl.exe)
@@ -30,6 +33,13 @@ $Binary   = Join-Path $ScriptDir "binaries\ct_fixture_prog.exe"
 $Trace    = Join-Path $ScriptDir "trace.ct"
 $Portable = Join-Path $ScriptDir "trace-portable.ct"
 $CtMcr    = Join-Path $NativeRecorder "ct_cli\ct_mcr.exe"
+
+# Canonical, pinned recording id of the portable export. Consumers hardcode it:
+#   codetracer/src/common/fixture_ids.nim
+#   codetracer/src/db-backend/tests/common/fixture_ids.rs
+#   codetracer-example-recordings/FIXTURE_IDS.md
+# `ct-mcr record` has no option to pin the raw trace's id.
+$PortableRecordingId = "019e3a35-2545-7a00-8aaa-43ff20060002"
 
 Write-Host "=== Regenerating Windows x86_64 MCR fixture ==="
 Write-Host "  Source:   $Source"
@@ -61,6 +71,7 @@ New-Item -ItemType Directory -Path (Split-Path $Binary) -Force | Out-Null
 Push-Location $ScriptDir
 try {
     cl /Od /Zi /Fe:$Binary $Source /link /DEBUG
+    if ($LASTEXITCODE -ne 0) { throw "cl failed with exit code $LASTEXITCODE" }
 } finally {
     Pop-Location
 }
@@ -77,13 +88,53 @@ if (-not (Test-Path $CtMcr)) {
     throw "ct-mcr not found at $CtMcr. Build it from codetracer-native-recorder first."
 }
 Remove-Item -Path $Trace -Force -ErrorAction SilentlyContinue
-& $CtMcr record --use-interpose -o $Trace -- $Binary
+# The recording captures the program's environment, so it is made with only
+# what the program and the recorder need (the PowerShell equivalent of
+# `env -i`); the shell's environment is restored afterwards. Recording from a
+# CI job or a developer shell otherwise publishes that shell's tokens in the
+# fixture.
+#
+# TEMP and TMP are set to a neutral directory, not kept from the shell: a
+# shell's TEMP is `C:\Users\<user>\AppData\Local\Temp`, so keeping it put the
+# recording user's name into the environment block of the recorded child, in
+# both traces (measured 2026-10-11 with the recorder's corpus_leak_scan.nim:
+# 9 user-name and 8 `C:\Users\` hits per trace). The environment is not the
+# only route: the program's DLLs read per-user registry values (one recording
+# captured HKCU's INetCache shell folder, `C:\Users\<user>\...`), so record
+# under an account whose name may be published, such as the CI runner's, and
+# from a directory that is not a junction (the recorder captures resolved NT
+# paths of mapped files).
+$keepVars = @("SystemRoot", "windir", "SystemDrive", "ComSpec", "PATHEXT",
+              "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE",
+              "CT_LICENSE_DEV_NO_FFI", "CODETRACER_LICENSE_FILE")
+$NeutralTemp = Join-Path $env:SystemDrive "ct-fixture-tmp"
+New-Item -ItemType Directory -Path $NeutralTemp -Force | Out-Null
+$savedEnv = @(Get-ChildItem env: | ForEach-Object { [pscustomobject]@{ Name = $_.Name; Value = $_.Value } })
+try {
+    foreach ($v in $savedEnv) {
+        if ($keepVars -notcontains $v.Name) { Remove-Item -Path "env:$($v.Name)" -ErrorAction SilentlyContinue }
+    }
+    $env:Path = "$env:SystemRoot\System32;$env:SystemRoot"
+    $env:LANG = "C"
+    $env:TEMP = $NeutralTemp
+    $env:TMP = $NeutralTemp
+    & $CtMcr record -o $Trace -- $Binary
+    $recordExit = $LASTEXITCODE
+} finally {
+    foreach ($v in $savedEnv) { Set-Item -Path "env:$($v.Name)" -Value $v.Value }
+    foreach ($n in @("LANG", "TEMP", "TMP")) {
+        if ($savedEnv.Name -notcontains $n) { Remove-Item -Path "env:$n" -ErrorAction SilentlyContinue }
+    }
+    Remove-Item -Path $NeutralTemp -Recurse -Force -ErrorAction SilentlyContinue
+}
+if ($recordExit -ne 0) { throw "ct-mcr record failed with exit code $recordExit" }
 Write-Host ""
 
 # Step 4: Export portable trace (for GUI E2E tests)
 Write-Host ">>> Exporting portable trace..."
 Remove-Item -Path $Portable -Force -ErrorAction SilentlyContinue
-& $CtMcr export --portable -v -o $Portable $Trace
+& $CtMcr export --portable -v --recording-id $PortableRecordingId -o $Portable $Trace
+if ($LASTEXITCODE -ne 0) { throw "ct-mcr export failed with exit code $LASTEXITCODE" }
 Write-Host ""
 
 # Step 5: Verify

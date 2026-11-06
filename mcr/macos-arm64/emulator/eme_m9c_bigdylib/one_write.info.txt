@@ -1,0 +1,75 @@
+# eme_m9c_bigdylib/one_write — the eme_m9c_2006 configuration, recorded with an
+# injected interpose dylib LARGER THAN 1 MiB.
+#
+# Victim: write(1,"one\n",4); return 0;   (programs/mcr_one_write.c)
+#
+# WHY THIS FIXTURE EXISTS
+# ----------------------------------------------------------------------------
+# dyld maps the injected `libct_interpose_lean.dylib` with a whole-file
+# `mmap(#197)` twice (a probe map that it unmaps again, then the real one), and
+# the founding svc capture carries each mapped region as the event's
+# out-parameter.  When the dylib grew past 1 MiB, each of those events became
+# larger than the fixed 1 MiB reassembly buffer of the recorder's in-process
+# ring drain, which released such a slot and carried on.  The recording reported
+# success and its replay trapped at cursor 89: `open(dylib)`, `fcntl`, `fcntl`,
+# `munmap` of a mapping whose `mmap` was not in the trace.
+#
+# This recording was made with that fixed, and with the three further
+# record-side fixes the same investigation found, each the next replay stop
+# once the previous was gone:
+#
+#   * tstart.bpat is the parent's FINAL bootstrap-patch record (capability
+#     ccBootPatchFinal / <trace>.bootpatch.final): 5 images (cache dyld 169
+#     sites, a cache dylib 3, the interpose dylib 405, libsystem_kernel 522, a
+#     4-site image) plus the interpose GOT bindings.  The exit drain used to fold
+#     the early cache-detect record (2 images): replay stopped at cursor 2009.
+#   * The recorder's OWN syscalls stay out of the founding stream: its
+#     constructor diagnostics, its container create, its boundary-C region
+#     walk, and its drain-thread stop at exit.  The capture guard was inert
+#     before hooks were ready, so all of them used to be recorded as the
+#     program's (replay stopped at 2026, 2059, 2330, 2053).  This recording
+#     has no founding write / write_nocancel / open_nocancel at all.
+#   * getrlimit(194) and mach_port_allocate(-16) carry their out-params (the
+#     in-child capture blob lacked two rules the parent table has; replay
+#     stopped at 2053 when the guest read an unwritten struct rlimit).
+#
+# The two 1.1 MiB events:
+#   event 89  mmap(0, 0x115FC0, prot 0x1, flags 0x40002, fd 5)
+#             out-param 1,138,624 B (the whole dylib, Mach-O magic CFFAEDFE)
+#   event 92  munmap(that mapping, 0x115FC0)
+#   event 93  mmap(... same ...) out-param 1,138,624 B
+#
+# It is a SEPARATE fixture from eme_m9c_2006 on purpose: that one is pinned to
+# its own recording shape (2133 events, replays to the program's exit), and
+# re-recording it would move every number its test pins.
+#
+# RECORDED VIA (same driver and configuration as eme_m9c_2006):
+#   cd ct_cli && CT_REC_INSTALL_FIXTURE=1 CT_REC_FIXTURE_NAME=eme_m9c_bigdylib \
+#     nim c -r tests/record_macos_eme_m9c_2006.nim
+#   (or: bash mcr/macos-arm64/emulator/regenerate.sh eme_m9c_bigdylib)
+#   On m4 (macOS Developer Mode off) the compiled driver was run under
+#   `sudo -n -E` inside `repro exec`, because task_for_pid as uid 501 waits on
+#   an authorization prompt there.
+#   Host m4 (aarch64-darwin, SIP off), 2026-10-27, codetracer-native-recorder
+#   `agents` @ 6c88a035 plus the fixes above (landed as e6f9b5e6).
+#
+# SHAPE OF THIS DRAW (recordings are not deterministic; report the shape):
+#   2051 founding svcs + the program's write + exit (2053 events);
+#   lean dylib 1,138,624 B; 4 svc-issuing images, 1100 patched sites (405
+#   B-island, 695 detour, 0 BRK); founding-merkle holds at 2007..2010 (roots
+#   bundled, per-page detail not).  6 of 6 draws with all fixes had this shape.
+#
+# REPLAY (replayMacosCtTrace, default mode), measured on the same tree:
+#   stop=mrsExit  terminated  exitCode=0  capturedOutput="one\n"
+#   predyldCursor=2053 (every founding svc consumed)  served=1951
+#   6 of 6 fresh draws with all fixes replay to the program's exit.
+#
+# BUNDLED IN-REPO (the replayable subset the driver installs):
+#   one_write.ct                    main CTFS trace
+#   one_write.ct.loadtrap           M7 image-load-trap sequence
+#   one_write.ct.m9images           M9 svc-issuing image list
+#   one_write.ct.predyld            founding + parent-note dump
+#   one_write.ct.arc4buf            arc4/CPRNG entry VAs (read by replay)
+#   one_write.ct.founding_merkle.rec record-side founding merkle roots
+#   one_write.c                     symlink to programs/mcr_one_write.c
+# NOT bundled: one_write.ct.founding_merkle.rec.pages (~550 MB per-page detail).

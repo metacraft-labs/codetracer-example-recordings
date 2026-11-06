@@ -19,6 +19,7 @@ them record the same `one_write` victim.
 | `eme5_inject/` | `one_write` | `ct_cli record --experimental-no-sip-mode` + `CT_STAGE0_INCHILD_SETUP=0` | The cp0-seeded T0 (`__dyld_start`) inject seed; **the no-founding-stream fallback path** — the only fixture that reaches an `svc` with `predyldRecordCount == 0`. Since founding capture became the record default (2026-07-29) the founding-free shape is an explicit opt-out, and the fallback serves only pre-promotion recordings |
 | `eme5_predyld/` | `one_write` | inject + `CT_STAGE0_INCHILD_SETUP=1` (now also the default), lean interpose dylib | The in-child pre-dyld installer, T0 disk re-derivation, and founding svcs SERVED from the recording at scale: 1945 events consumed, 1898 founding serves, 74 out-param copyouts |
 | `eme_m9c_2006/` | `one_write` | inject + M9c + `CT_ARC4_HOOK=1` | Whole-program svc capture via the reach-independent detour tier; the cache-dyld re-arm; the current replay frontier |
+| `eme_m9c_bigdylib/` | `one_write` | as `eme_m9c_2006`, installed with `CT_REC_FIXTURE_NAME=eme_m9c_bigdylib` | An injected interpose dylib over 1 MiB: its two whole-file founding `mmap`s (1.1 MiB events) are in the stream, `tstart.bpat` is the final bootstrap-patch record (5 images + interpose bindings), none of the recorder's own syscalls is in the founding stream, and replay reaches the program's exit (`one\n`) |
 
 `eme_ete_2006/` (inject + M9c + `CT_PREDYLD_ETE=1`) was **retired** on
 2026-07-28. It had no code consumer, no committed driver, and was not
@@ -41,6 +42,30 @@ never bundled here, lives under `~/mcr-hwtrace/eme_ete_2006/`.
 | `<name>.ct.m9images` | M9 svc-issuing image list (`:detour` = the §1A.9 tier-2 patch). |
 | `<name>.ct.wpband.N` | M9c whole-program svc bands. |
 | `<name>.ct.arc4buf` | arc4/CPRNG capture buffer VAs. |
+
+**The `.ct` files were converted, not re-recorded, to container version 5.**
+They were written as CTFS version 4; since codetracer-trace-format-nim
+`86ca226` (2026-10-01) every reader refuses any version but 5. Re-recording
+needs the SIP-disabled Mac, so on 2026-10-04 each container was rewritten by
+[`tools/ctfs-v4-to-v5/`](../../../tools/ctfs-v4-to-v5/): every member read with
+the version-4 walk and written unchanged, in the same order, by the current
+writer. The member bytes — including `meta.dat` and each event stream, with the
+member formats they were recorded in — are identical to the recording's; only
+the container's block layout changed. The numbers in `<name>.info.txt` and
+`<name>.events.txt` therefore still describe these files. Sidecars were not
+touched.
+
+**Their `meta.dat` was then upgraded from schema 3 to 6** (2026-10-05, owner
+decision: convert, with the reader kept strict), by
+[`tools/ctfs-v4-to-v5/meta_v3_to_v6.nim`](../../../tools/ctfs-v4-to-v5/meta_v3_to_v6.nim).
+Every field the newer schemas add is derived from the recording: `flags_ext`
+is 0 (its only bit postdates v3), and the v3 path list moves, in path-id order,
+into `paths.dat`. v4's change to line-only step positions touches step
+streams, which these native traces do not have, and the tool refuses a
+container that has one. In the same pass the seed and sidecar members stored
+under the lossy keys of `t_start.*` / `cp0.predyld.syscalls` are renamed to
+the storable names recorder `e16f18457` gave them (`tstart.mem`, ...). Member
+bytes are unchanged.
 
 Sidecars are per-fixture — a directory only carries the ones its recording
 configuration produces. Some sidecars are read off disk by the replay path
