@@ -23,12 +23,12 @@ set -uo pipefail
 
 FROM_INDEX=false
 if [ "${1:-}" = "--index" ]; then
-	FROM_INDEX=true
-	shift
+  FROM_INDEX=true
+  shift
 fi
 if [ "$#" -ne 4 ]; then
-	echo "usage: $0 [--index] <ct-print> <ct-credential-scan> <ct-member-names> <ct-verify-trace>" >&2
-	exit 2
+  echo "usage: $0 [--index] <ct-print> <ct-credential-scan> <ct-member-names> <ct-verify-trace>" >&2
+  exit 2
 fi
 abs() { (cd "$(dirname "$1")" && printf '%s/%s\n' "$(pwd)" "$(basename "$1")"); }
 CT_PRINT="$(abs "$1")"
@@ -36,10 +36,10 @@ CREDENTIAL_SCAN="$(abs "$2")"
 MEMBER_NAMES="$(abs "$3")"
 VERIFY_TRACE="$(abs "$4")"
 for tool in "$CT_PRINT" "$CREDENTIAL_SCAN" "$MEMBER_NAMES" "$VERIFY_TRACE"; do
-	if [ ! -x "$tool" ]; then
-		echo "error: $tool is not an executable" >&2
-		exit 2
-	fi
+  if [ ! -x "$tool" ]; then
+    echo "error: $tool is not an executable" >&2
+    exit 2
+  fi
 done
 
 REPO="$(git rev-parse --show-toplevel)"
@@ -50,56 +50,56 @@ EXCEPTIONS="$REPO/.github/recordings-not-yet-readable.txt"
 ROOT="$REPO"
 SCRATCH=""
 if $FROM_INDEX; then
-	SCRATCH="$(mktemp -d)"
-	trap 'rm -rf "$SCRATCH"' EXIT
-	git ls-files -z -- '*.ct' | git checkout-index -z --stdin --prefix="$SCRATCH/"
-	ROOT="$SCRATCH"
+  SCRATCH="$(mktemp -d)"
+  trap 'rm -rf "$SCRATCH"' EXIT
+  git ls-files -z -- '*.ct' | git checkout-index -z --stdin --prefix="$SCRATCH/"
+  ROOT="$SCRATCH"
 fi
 
 listed_reason() {
-	grep -v '^#' "$EXCEPTIONS" | awk -F '\t' -v p="$1" '$1 == p { print $2; exit }'
+  grep -v '^#' "$EXCEPTIONS" | awk -F '\t' -v p="$1" '$1 == p { print $2; exit }'
 }
 
 failed=0
 readable=()
 excepted=0
 while IFS= read -r -d '' path; do
-	reason="$(listed_reason "$path")"
-	if [ -z "$reason" ]; then
-		readable+=("$path")
-		continue
-	fi
-	excepted=$((excepted + 1))
-	nim_out="$("$CT_PRINT" --summary "$ROOT/$path" 2>&1)"
-	nim_rc=$?
-	rust_out="$("$VERIFY_TRACE" verify-trace "$ROOT/$path" 2>&1)"
-	rust_rc=$?
-	if [ "$nim_rc" -eq 0 ] || [ "$rust_rc" -eq 0 ]; then
-		echo "FAIL $path: opens now (ct-print=$nim_rc rust=$rust_rc); remove it from .github/recordings-not-yet-readable.txt (listed as: $reason)"
-		failed=1
-	elif ! printf '%s' "$nim_out" | grep -q 'CTFS container version' ||
-		! printf '%s' "$rust_out" | grep -q 'unsupported CTFS container version'; then
-		echo "FAIL $path: listed as unreadable for its container version ($reason), but refused otherwise:"
-		printf '%s\n' "$nim_out" | head -3 | sed 's/^/       ct-print: /'
-		printf '%s\n' "$rust_out" | head -3 | sed 's/^/       rust: /'
-		failed=1
-	else
-		echo "OK   $path: refused by both readers for its container version, as listed ($reason)"
-	fi
+  reason="$(listed_reason "$path")"
+  if [ -z "$reason" ]; then
+    readable+=("$path")
+    continue
+  fi
+  excepted=$((excepted + 1))
+  nim_out="$("$CT_PRINT" --summary "$ROOT/$path" 2>&1)"
+  nim_rc=$?
+  rust_out="$("$VERIFY_TRACE" verify-trace "$ROOT/$path" 2>&1)"
+  rust_rc=$?
+  if [ "$nim_rc" -eq 0 ] || [ "$rust_rc" -eq 0 ]; then
+    echo "FAIL $path: opens now (ct-print=$nim_rc rust=$rust_rc); remove it from .github/recordings-not-yet-readable.txt (listed as: $reason)"
+    failed=1
+  elif ! printf '%s' "$nim_out" | grep -q 'CTFS container version' ||
+    ! printf '%s' "$rust_out" | grep -q 'unsupported CTFS container version'; then
+    echo "FAIL $path: listed as unreadable for its container version ($reason), but refused otherwise:"
+    printf '%s\n' "$nim_out" | head -3 | sed 's/^/       ct-print: /'
+    printf '%s\n' "$rust_out" | head -3 | sed 's/^/       rust: /'
+    failed=1
+  else
+    echo "OK   $path: refused by both readers for its container version, as listed ($reason)"
+  fi
 done < <(git ls-files -z -- '*.ct')
 
 # Every listed file must still be committed.
 while IFS="$(printf '\t')" read -r path _; do
-	case "$path" in '' | '#'*) continue ;; esac
-	if [ -z "$(git ls-files -- "$path")" ]; then
-		echo "FAIL $path: listed in .github/recordings-not-yet-readable.txt but not committed; remove the line"
-		failed=1
-	fi
+  case "$path" in '' | '#'*) continue ;; esac
+  if [ -z "$(git ls-files -- "$path")" ]; then
+    echo "FAIL $path: listed in .github/recordings-not-yet-readable.txt but not committed; remove the line"
+    failed=1
+  fi
 done <"$EXCEPTIONS"
 
 if [ "${#readable[@]}" -eq 0 ]; then
-	echo "FAIL: no committed recording to verify"
-	exit 1
+  echo "FAIL: no committed recording to verify"
+  exit 1
 fi
 (cd "$ROOT" && bash "$VERIFY" "$CT_PRINT" "$CREDENTIAL_SCAN" "$MEMBER_NAMES" "$VERIFY_TRACE" "${readable[@]}") || failed=1
 

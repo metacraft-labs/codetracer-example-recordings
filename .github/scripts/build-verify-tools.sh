@@ -18,8 +18,8 @@
 set -euo pipefail
 
 if [ "$#" -ne 1 ] && [ "$#" -ne 3 ]; then
-	echo "usage: $0 <out-dir> [<codetracer-trace-format-nim> <codetracer-trace-format>]" >&2
-	exit 2
+  echo "usage: $0 <out-dir> [<codetracer-trace-format-nim> <codetracer-trace-format>]" >&2
+  exit 2
 fi
 REPO="$(git rev-parse --show-toplevel)"
 mkdir -p "$1"
@@ -28,26 +28,26 @@ NIM_REPO="$(cd "${2:-$REPO/../codetracer-trace-format-nim}" && pwd)"
 RUST_REPO="$(cd "${3:-$REPO/../codetracer-trace-format}" && pwd)"
 
 in_shell() {
-	local dir="$1"
-	shift
-	if command -v nix >/dev/null 2>&1 && [ -f "$dir/flake.nix" ]; then
-		(cd "$dir" && nix develop --command bash -c "$*")
-	else
-		(cd "$dir" && bash -c "$*")
-	fi
+  local dir="$1"
+  shift
+  if command -v nix >/dev/null 2>&1 && [ -f "$dir/flake.nix" ]; then
+    (cd "$dir" && nix develop --command bash -c "$*")
+  else
+    (cd "$dir" && bash -c "$*")
+  fi
 }
 
 # shellcheck disable=SC2016 # expanded by the inner shell
 in_shell "$NIM_REPO" '
-	set -euo pipefail
-	nim c -d:release --hints:off -p:src -o:"'"$OUT"'/ct-print" src/codetracer_ct_print.nim
-	nim c -d:release --hints:off -p:src -o:"'"$OUT"'/ct-credential-scan" "'"$REPO"'/.github/scripts/ct_credential_scan.nim"
-	nim c -d:release --hints:off -p:src -o:"'"$OUT"'/ct-member-names" "'"$REPO"'/.github/scripts/ct_member_names.nim"'
+  set -euo pipefail
+  nim c -d:release --hints:off -p:src -o:"'"$OUT"'/ct-print" src/codetracer_ct_print.nim
+  nim c -d:release --hints:off -p:src -o:"'"$OUT"'/ct-credential-scan" "'"$REPO"'/.github/scripts/ct_credential_scan.nim"
+  nim c -d:release --hints:off -p:src -o:"'"$OUT"'/ct-member-names" "'"$REPO"'/.github/scripts/ct_member_names.nim"'
 # shellcheck disable=SC2016 # expanded by the inner shell
 in_shell "$RUST_REPO" '
-	set -euo pipefail
-	cargo build --release -p codetracer_trace_util
-	cp "${CARGO_TARGET_DIR:-target}/release/codetracer_trace_util" "'"$OUT"'/codetracer_trace_util"'
+  set -euo pipefail
+  cargo build --release -p codetracer_trace_util
+  cp "${CARGO_TARGET_DIR:-target}/release/codetracer_trace_util" "'"$OUT"'/codetracer_trace_util"'
 echo "verify tools built in $OUT:"
 echo "  ct-print            from $NIM_REPO @ $(git -C "$NIM_REPO" rev-parse --short HEAD)"
 echo "  codetracer_trace_util from $RUST_REPO @ $(git -C "$RUST_REPO" rev-parse --short HEAD)"

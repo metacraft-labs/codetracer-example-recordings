@@ -40,7 +40,7 @@ int main(void) {
   }
   syscall(SYS_arch_prctl, ARCH_SET_CPUID, 1);
   printf("CPUID faulting: available (ARCH_GET_CPUID was %ld before the "
-         "probe; restored)\n",
-         before);
+          "probe; restored)\n",
+          before);
   return 0;
 }
