@@ -87,9 +87,15 @@ resolve_ref() {
 }
 
 # Print the `revision` the lock file records for repo NAME, or nothing.
+# The pin is the inline table naming NAME that carries a `revision`. Lock
+# schema v2 spells it `{ name = "<repo>", path = ..., revision = ... }`; v3,
+# which codetracer's lock uses since 2026-10-21, spells it `{ name = "<repo>",
+# coord_kind = "vcs", ..., revision = ... }`. Matching on the revision rather
+# than on the second key reads both; the `packages` entry of the same name
+# carries no revision and is skipped.
 lock_rev() {
   local lock="$1" name="$2"
-  grep -o "{ name = \"$name\", path = [^}]*}" "$lock" |
+  grep -o "{ name = \"$name\", [^}]*revision = \"[0-9a-f]\{40\}\"[^}]*}" "$lock" |
     grep -o 'revision = "[0-9a-f]*"' | head -1 | cut -d'"' -f2 || true
 }
 

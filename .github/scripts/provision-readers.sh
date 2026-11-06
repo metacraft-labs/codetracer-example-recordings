@@ -40,7 +40,13 @@ curl -fsSL -o "$LOCK" "https://raw.githubusercontent.com/metacraft-labs/codetrac
 PINS="$PARENT/reader-pins.txt"
 echo "codetracer=$CODETRACER_SHA" >"$PINS"
 for repo in codetracer-trace-format-nim codetracer-trace-format; do
-  sha="$(grep -o "{ name = \"$repo\", path = [^}]*}" "$LOCK" |
+  # The sibling pin is the inline table naming the repo that carries a
+  # `revision`. Lock schema v2 spells it `{ name = "<repo>", path = ...,
+  # revision = ... }`; v3, which codetracer's lock uses since 2026-10-21,
+  # spells it `{ name = "<repo>", coord_kind = "vcs", ..., revision = ... }`.
+  # Matching on the revision rather than on the second key reads both; the
+  # `packages` entry of the same name carries no revision and is skipped.
+  sha="$(grep -o "{ name = \"$repo\", [^}]*revision = \"[0-9a-f]\{40\}\"[^}]*}" "$LOCK" |
     grep -o 'revision = "[0-9a-f]*"' | head -1 | cut -d'"' -f2 || true)"
   if [ -z "$sha" ]; then
     echo "error: codetracer@$CODETRACER_SHA repro.lock pins no $repo revision" >&2
