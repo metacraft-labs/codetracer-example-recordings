@@ -51,8 +51,8 @@ EXPECT_CONTAINER=5
 EXPECT_META=7
 
 if [ "$#" -lt 5 ]; then
-	echo "usage: $0 <ct-print> <ct-credential-scan> <ct-member-names> <ct-verify-trace|-> <file.ct> [<file.ct> ...]" >&2
-	exit 2
+  echo "usage: $0 <ct-print> <ct-credential-scan> <ct-member-names> <ct-verify-trace|-> <file.ct> [<file.ct> ...]" >&2
+  exit 2
 fi
 
 CT_PRINT="$1"
@@ -63,75 +63,75 @@ shift 4
 
 failed=0
 for f in "$@"; do
-	if [ ! -f "$f" ]; then
-		echo "FAIL $f: missing"
-		failed=1
-		continue
-	fi
+  if [ ! -f "$f" ]; then
+    echo "FAIL $f: missing"
+    failed=1
+    continue
+  fi
 
-	container="$(od -A n -t u1 -j 5 -N 1 "$f" | tr -d ' ')"
+  container="$(od -A n -t u1 -j 5 -N 1 "$f" | tr -d ' ')"
 
-	meta="none"
-	off="$(LC_ALL=C grep -obUa 'CTMD' "$f" | head -1 | cut -d: -f1)"
-	if [ -n "$off" ]; then
-		meta="$(od -A n -t u2 -j $((off + 4)) -N 2 "$f" | tr -d ' ')"
-	fi
+  meta="none"
+  off="$(LC_ALL=C grep -obUa 'CTMD' "$f" | head -1 | cut -d: -f1)"
+  if [ -n "$off" ]; then
+    meta="$(od -A n -t u2 -j $((off + 4)) -N 2 "$f" | tr -d ' ')"
+  fi
 
-	print_out="$("$CT_PRINT" --summary "$f" 2>&1)"
-	print_rc=$?
+  print_out="$("$CT_PRINT" --summary "$f" 2>&1)"
+  print_rc=$?
 
-	rust_out=""
-	rust_rc=0
-	if [ "$VERIFY_TRACE" != "-" ]; then
-		rust_out="$("$VERIFY_TRACE" verify-trace "$f" 2>&1)"
-		rust_rc=$?
-	fi
+  rust_out=""
+  rust_rc=0
+  if [ "$VERIFY_TRACE" != "-" ]; then
+    rust_out="$("$VERIFY_TRACE" verify-trace "$f" 2>&1)"
+    rust_rc=$?
+  fi
 
-	scan_out="$("$CREDENTIAL_SCAN" "$f" 2>&1)"
-	scan_rc=$?
-	names_out="$("$MEMBER_NAMES" "$f" 2>&1)"
-	names_rc=$?
+  scan_out="$("$CREDENTIAL_SCAN" "$f" 2>&1)"
+  scan_rc=$?
+  names_out="$("$MEMBER_NAMES" "$f" 2>&1)"
+  names_rc=$?
 
-	verdict="OK  "
-	problems=""
-	if [ "$container" != "$EXPECT_CONTAINER" ]; then
-		problems="$problems container=$container(want $EXPECT_CONTAINER)"
-	fi
-	if [ "$meta" != "$EXPECT_META" ]; then
-		problems="$problems meta.dat=$meta(want $EXPECT_META)"
-	fi
-	if [ "$print_rc" -ne 0 ]; then
-		problems="$problems ct-print-exit=$print_rc"
-	fi
-	if [ "$rust_rc" -ne 0 ]; then
-		problems="$problems rust-exit=$rust_rc"
-	fi
-	if [ "$scan_rc" -ne 0 ]; then
-		problems="$problems credentials=$([ "$scan_rc" -eq 1 ] && echo FOUND || echo "scan-error($scan_rc)")"
-	fi
-	if [ "$names_rc" -ne 0 ]; then
-		problems="$problems members=$([ "$names_rc" -eq 1 ] && echo UNSTORABLE || echo "check-error($names_rc)")"
-	fi
-	if [ -n "$problems" ]; then
-		verdict="FAIL"
-		failed=1
-	fi
+  verdict="OK  "
+  problems=""
+  if [ "$container" != "$EXPECT_CONTAINER" ]; then
+    problems="$problems container=$container(want $EXPECT_CONTAINER)"
+  fi
+  if [ "$meta" != "$EXPECT_META" ]; then
+    problems="$problems meta.dat=$meta(want $EXPECT_META)"
+  fi
+  if [ "$print_rc" -ne 0 ]; then
+    problems="$problems ct-print-exit=$print_rc"
+  fi
+  if [ "$rust_rc" -ne 0 ]; then
+    problems="$problems rust-exit=$rust_rc"
+  fi
+  if [ "$scan_rc" -ne 0 ]; then
+    problems="$problems credentials=$([ "$scan_rc" -eq 1 ] && echo FOUND || echo "scan-error($scan_rc)")"
+  fi
+  if [ "$names_rc" -ne 0 ]; then
+    problems="$problems members=$([ "$names_rc" -eq 1 ] && echo UNSTORABLE || echo "check-error($names_rc)")"
+  fi
+  if [ -n "$problems" ]; then
+    verdict="FAIL"
+    failed=1
+  fi
 
-	rust_word="$rust_rc"
-	if [ "$VERIFY_TRACE" = "-" ]; then
-		rust_word="NOT-RUN"
-	fi
-	echo "$verdict $f: container=$container meta.dat=$meta ct-print=$print_rc rust=$rust_word credentials=$([ "$scan_rc" -eq 0 ] && echo none || echo FOUND) members=$([ "$names_rc" -eq 0 ] && echo storable || echo UNSTORABLE) size=$(wc -c <"$f" | tr -d ' ')${problems:+ --$problems}"
-	if [ "$print_rc" -ne 0 ]; then
-		printf '%s\n' "$print_out" | head -5 | sed 's/^/       ct-print: /'
-	fi
-	if [ "$rust_rc" -ne 0 ]; then
-		printf '%s\n' "$rust_out" | head -5 | sed 's/^/       rust: /'
-	fi
-	if [ "$scan_rc" -ne 0 ]; then
-		printf '%s\n' "$scan_out" | head -20 | sed 's/^/       credentials: /'
-	fi
-	printf '%s\n' "$names_out" | head -5 | sed 's/^/       members: /'
+  rust_word="$rust_rc"
+  if [ "$VERIFY_TRACE" = "-" ]; then
+    rust_word="NOT-RUN"
+  fi
+  echo "$verdict $f: container=$container meta.dat=$meta ct-print=$print_rc rust=$rust_word credentials=$([ "$scan_rc" -eq 0 ] && echo none || echo FOUND) members=$([ "$names_rc" -eq 0 ] && echo storable || echo UNSTORABLE) size=$(wc -c <"$f" | tr -d ' ')${problems:+ --$problems}"
+  if [ "$print_rc" -ne 0 ]; then
+    printf '%s\n' "$print_out" | head -5 | sed 's/^/       ct-print: /'
+  fi
+  if [ "$rust_rc" -ne 0 ]; then
+    printf '%s\n' "$rust_out" | head -5 | sed 's/^/       rust: /'
+  fi
+  if [ "$scan_rc" -ne 0 ]; then
+    printf '%s\n' "$scan_out" | head -20 | sed 's/^/       credentials: /'
+  fi
+  printf '%s\n' "$names_out" | head -5 | sed 's/^/       members: /'
 done
 
 exit "$failed"

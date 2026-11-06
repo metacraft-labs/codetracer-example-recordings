@@ -108,8 +108,9 @@ and fails by name, before building, when `.github/scripts/probe-cpuid-faulting.c
 says the feature is absent.
 
 The emulator job and the iOS job check their precondition first (SIP
-disabled; Xcode with an iOS simulator) and skip with a notice when the runner
-lacks it, before building anything.
+disabled; Xcode with an iOS simulator) and fail with an explicit prerequisite
+error when the runner lacks it, before building anything. The requested platform
+remains unqualified until real regeneration and verification succeed.
 
 Run it from a shell:
 

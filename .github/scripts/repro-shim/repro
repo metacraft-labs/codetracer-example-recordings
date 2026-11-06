@@ -16,16 +16,16 @@
 set -euo pipefail
 
 if [ "$#" -lt 3 ] || [ "$1" != "exec" ]; then
-	echo "repro (CI shim): only 'repro exec <repo-dir> -- <command...>' is supported; got: repro $*" >&2
-	exit 2
+  echo "repro (CI shim): only 'repro exec <repo-dir> -- <command...>' is supported; got: repro $*" >&2
+  exit 2
 fi
 dir="$2"
 shift 2
 if [ "${1:-}" = "--" ]; then
-	shift
+  shift
 fi
 if [ "$#" -eq 0 ]; then
-	echo "repro (CI shim): no command after 'repro exec $dir --'" >&2
-	exit 2
+  echo "repro (CI shim): no command after 'repro exec $dir --'" >&2
+  exit 2
 fi
 exec nix develop "$dir" --command "$@"
