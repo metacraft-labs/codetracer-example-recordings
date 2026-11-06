@@ -31,7 +31,8 @@ container version but 5.
 
 ```sh
 TF=../../../codetracer-trace-format-nim/src   # the workspace sibling
-nim c -r --path:$TF test_ctfs_v4_to_v5.nim
+NC=../../../codetracer/libs/nimcrypto         # the test's sha256; not in TF's env
+nim c -r --path:$TF --path:$NC test_ctfs_v4_to_v5.nim
 nim c -d:release --path:$TF ctfs_v4_to_v5.nim
 ./ctfs_v4_to_v5 in.ct out.ct                  # in == out converts in place
 ```

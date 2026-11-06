@@ -30,7 +30,8 @@ version-6 file with the record configuration's key renamed.
 
 ```sh
 TF=../../../codetracer-trace-format-nim/src   # the workspace sibling
-nim c -r --path:$TF test_meta_v6_to_v7.nim
+NC=../../../codetracer/libs/nimcrypto         # the test's sha256; not in TF's env
+nim c -r --path:$TF --path:$NC test_meta_v6_to_v7.nim
 nim c -d:release --path:$TF meta_v6_to_v7.nim
 ./meta_v6_to_v7 in.ct out.ct                  # in == out upgrades in place
 ```

@@ -38,8 +38,10 @@
 ## conversion with the one key renamed, and every committed macOS fixture is
 ## checked for a member left under an old key.
 ##
-## Run:  nim c -r --path:<codetracer-trace-format-nim>/src test_ctfs_v4_to_v5.nim
-## (needs nimcrypto, which codetracer-trace-format-nim's environment carries).
+## Run:  nim c -r --path:<codetracer-trace-format-nim>/src --path:<nimcrypto> test_ctfs_v4_to_v5.nim
+## nimcrypto (for the sha256 pins) is not a dependency of
+## codetracer-trace-format-nim, whose environment does not carry it; in the
+## workspace it is codetracer's `libs/nimcrypto` submodule.
 
 when defined(nimPreviewSlimSystem):
   import std/[syncio, assertions]
