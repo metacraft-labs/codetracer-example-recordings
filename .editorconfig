@@ -1,0 +1,27 @@
+# EditorConfig: https://editorconfig.org
+#
+# `root = true` on purpose. Without this file the `editorconfig-checker`
+# pre-commit hook checked nothing in a standalone clone (CI, a Windows clone, a
+# worktree under /tmp), yet in a workspace checkout it inherited the workspace
+# root's .editorconfig and failed the tab-indented scripts. One repository
+# contract, wherever the checkout lives: the rules below are the workspace
+# root's, restricted to the file types this repository holds outside the
+# excluded recording trees.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+indent_size = unset
+
+# Nim: 2-space indents, but multi-line proc signatures align continuation
+# lines with the column after the opening `(`, which is rarely even.
+[*.nim]
+indent_size = unset

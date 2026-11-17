@@ -1,0 +1,9 @@
+evThreadStart 1
+evOsVmReclaimRing 1
+evMemorySnapshot 1
+evSyncLockAcquireSuccess 17
+evSyncLockRelease 16
+evOsSyscall 1
+evCpuNondeterministic 1
+evOsMmap 1
+evThreadEnd 1

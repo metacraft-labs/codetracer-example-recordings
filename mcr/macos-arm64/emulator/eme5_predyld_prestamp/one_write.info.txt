@@ -1,0 +1,51 @@
+eme5_predyld_prestamp/one_write.ct — DERIVED, NOT RECORDED
+===========================================================
+
+What it is
+----------
+The pre-stamping control for macOS founding-thread attribution.  A recorder
+from before founding SP stamping wrote no `recordcfg` member and stamped every
+`evOsPredyldSyscall` header's ctTid 0; such a trace must still load, with
+attribution inactive (the identity projection).  No recording of that shape is
+kept any more, so this file is derived from ../eme5_predyld/one_write.ct by
+undoing exactly what stamping added:
+
+  * the `recordcfg` member is dropped;
+  * every `evOsPredyldSyscall` header's ctTid is set to 0 (1952 stamps).
+
+Every other member is copied byte for byte, in directory order.  The rewritten
+thread stream `t00000000000` is stored as one zstd frame with no seek index, so
+its index member `i00000000000` is dropped with it (the loader reads both
+forms).  No event other than the founders, and no payload byte, changes.
+
+How it is made
+--------------
+  bash mcr/macos-arm64/emulator/eme5_predyld_prestamp/derive.sh
+
+which runs codetracer-native-recorder's
+ct_emulator/tests/gen_prestamp_control_fixture.nim over
+tests/support/prestamp_derivation.nim.  The derivation is a pure function of
+the source: two runs on m4 wrote identical bytes.  Re-derive it whenever
+eme5_predyld is re-recorded, and commit both together.
+
+Derived 2026-11-17 on m4 from eme5_predyld/one_write.ct
+  (sha256 381a1f1a2412cdde868f96a387e634ca93e3a212721d1db88b73b0ab4918f0ab)
+by codetracer-native-recorder agents c21cd07dd plus the change that adds the
+generator:
+  members copied 18, dropped `recordcfg` and `i00000000000`,
+  stream rewritten `t00000000000`, 1952 founding events, 1952 stamps cleared.
+  Result: 19,484,672 bytes,
+  sha256 5344ccf11d5d787f341fe54ed9e5e41a885137c52f9e3bdc95f7eb2e3bfaa617.
+
+What reads it
+-------------
+codetracer-native-recorder
+ct_emulator/tests/test_macos_attribution_refuses_stamps_without_fact.nim:
+  * the control: no `recordcfg`, every founding event's raw ctTid is 0, more
+    than 1000 founding events (so the check is not vacuous), attribution
+    inactive with no error, and ctfsToSyscallLog succeeds;
+  * the derivation: the source carries `recordcfg` and is stamped, re-deriving
+    it clears exactly as many stamps as the source has, and the committed file
+    is byte-identical to the re-derivation.
+
+It is never replayed: it exists for the loader's attribution gate only.

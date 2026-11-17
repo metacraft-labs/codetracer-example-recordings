@@ -1,0 +1,5 @@
+---
+triple:          'arm64-apple-darwin'
+binary-path:     '/tmp/ct-ios-fixture-oOrXOU/ios_sim_cooperative_fixture'
+relocations:     []
+...

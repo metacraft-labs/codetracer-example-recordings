@@ -1,0 +1,6 @@
+evThreadStart 1
+evOsVmReclaimRing 1
+evMemorySnapshot 1
+evSyncLockAcquireSuccess 12
+evSyncLockRelease 12
+evThreadEnd 1

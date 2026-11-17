@@ -1,0 +1,30 @@
+{
+  "id": 0,
+  "program": "/tmp/ct-example-recordings-build/rust_flow_test",
+  "args": [],
+  "env": "",
+  "workdir": "/tmp/ct-example-recordings-build",
+  "output": "",
+  "sourceFolders": [
+    "/tmp/ct-example-recordings-build"
+  ],
+  "lowLevelFolder": "",
+  "compileCommand": "",
+  "outputFolder": "/tmp/ct-example-recordings-build/out-rust",
+  "date": "",
+  "duration": "",
+  "lang": 2,
+  "imported": false,
+  "calltrace": true,
+  "events": true,
+  "test": false,
+  "archiveServerID": -1,
+  "shellID": -1,
+  "teamID": -1,
+  "rrPid": 3452283,
+  "exitCode": 0,
+  "calltraceMode": 0,
+  "downloadKey": "",
+  "controlId": "",
+  "onlineExpireTime": -1
+}

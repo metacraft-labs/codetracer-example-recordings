@@ -1,0 +1,187 @@
+eme5_inject/one_write.ct — RE-RECORDED 2026-11-16
+===================================================
+
+Recorded on m4 (Apple Silicon, SIP disabled) by
+codetracer-native-recorder 92f3a34c with the committed driver
+ct_cli/tests/record_macos_eme5_inject.nim (no founding stream).
+
+Event histogram: one_write.events.txt (10 events: evOsVmReclaimRing,
+evMemorySnapshot, evThreadStart, 3 lock pairs, evOsWrite).
+
+one_write.ct.head.json was removed with this recording: the current
+recorder writes no .head.json, and the one left here described the previous
+recording (eventCount 168).  Mentions of it below are historical.
+
+Replay, measured on m4 against native-recorder 92f3a34c (test_macos_inject_seed,
+test_macos_emulator_svc_dispatch, test_macos_emulator_merkle_emission):
+  * the not-havePredyldStream fallback path, as before;
+  * the same 6 svcs at the same PCs, in the same order, as the previous
+    recording: task_self_trap, mach_reply_port, thread_selfid,
+    platform_syscall, crossarch_trap, csrctl;
+  * the same stop: BSD #483 csrctl at 0x100014E04, declined (mrsUnhandledTrap);
+  * 192,673 instructions (192,927 before): -238 between platform_syscall and
+    crossarch_trap, -16 between crossarch_trap and csrctl;
+  * shared-cache base 0x18A370000 (from dsc.bin).
+
+==============================================================================
+EVERYTHING BELOW THIS LINE IS HISTORICAL.  It describes the recording this
+file was written for, which the 2026-11-16 re-recording replaced.  Its numbers
+(instruction counts, stop PCs, geids, counts, addresses) are NOT this file's.
+==============================================================================
+
+# eme5_inject/one_write — the FOUNDING-FREE inject fixture
+#
+# Victim: write(1,"one\n",4); return 0;  (programs/mcr_one_write.c — a direct
+# write syscall, which the main-image interpose table captures, unlike puts()).
+#
+# Recorded via: ct_cli/tests/record_macos_eme5_inject.nim
+#   = the injected record path (runInject imRecord, the SIP-off PC-hijack of a
+#     suspended child at pre-dyld T0 = __dyld_start) with
+#     CT_STAGE0_INCHILD_SETUP=0 — an EXPLICIT opt-out from founding capture.
+#     (When this fixture was first recorded, clearing the variable was enough:
+#     founding capture was opt-in and this was the recorder's DEFAULT
+#     configuration.  It no longer is — see below.)
+#
+# ============================================================================
+# WHY THIS FIXTURE IS FOUNDING-FREE ON PURPOSE
+# ============================================================================
+#
+# It carries predyldRecordCount == 0: no pre-dyld founding svc stream.  That is
+# its JOB.  It is the only fixture that drives the emulator's no-founding-stream
+# FALLBACK path — `if not havePredyldStream:` in
+# codetracer-native-recorder/ct_emulator/src/ct_emulator/ctfs_bridge.nim — where
+# the OS-sim host-shortcuts dyld's whole bring-up surface instead of serving it
+# from the recording.
+#
+# THE FALLBACK IS NOT DEAD CODE — MEASURED, NOT ASSUMED:
+#   * THIS recording carries 0 founding evOsPredyldSyscall records, and its
+#     replay takes the fallback for every svc it issues.
+#   * eme5/null_main and eme5/one_puts are also founding-free but cover the
+#     fallback NOT AT ALL: they fault at PC=0 after 20 instructions, before any
+#     svc is issued.  Nothing else covers it.
+#
+# UPDATED 2026-07-29 — FOUNDING CAPTURE IS NOW THE RECORD DEFAULT.
+# `predyld_svc_capture.resolveFoundingCapturePath` defaults a RECORD run to the
+# Stage-2c in-child setup installer, so a plain `ct-mcr record` now produces a
+# founding-ARMED recording.  Two consequences:
+#
+#   * this fixture reaches its founding-free configuration by ASKING for it
+#     (CT_STAGE0_INCHILD_SETUP=0), not by leaving a variable unset;
+#   * the fallback no longer serves any NEW recording — but it is still the only
+#     way to replay a recording made BEFORE the promotion, including this one.
+#
+# The founding-ARMED counterpart is eme5_predyld/ (it absorbed the short-lived
+# eme5_inject_founding/ directory, which no longer exists).
+#
+# OPEN, FOR THE OWNER — RETIREMENT IS A TRACE-COMPATIBILITY DECISION, NOT A
+# MECHANICAL DELETION.  The fallback selector `havePredyldStream` is purely a
+# property of the RECORDING (>=1 evOsPredyldSyscall event), never of the replay
+# mode, so promotion alone cannot make it unreachable for `.ct` files that
+# already exist.  Deleting it means pre-promotion recordings — this fixture
+# among them — stop replaying.  Its remaining fabrications are task_self_trap
+# -> 0x103 plus the allocPortName family (thread_self_trap, host_self_trap,
+# mach_reply_port), thread_selfid -> 0x30D40, crossarch_trap -> ENOSYS and
+# issetugid -> 0.  csrctl is NO LONGER among them: the handler now declines
+# when the recording does not carry the record host's SIP configuration
+# (see the terminus below), which is why this fixture stops where it does.
+
+# ============================================================================
+# RE-RECORDED 2026-07-29 — THE PREVIOUS RECORDING NO LONGER REPLAYED
+# ============================================================================
+#
+# The fixture that stood here was recorded before `captureCommpage` existed, so
+# it carried no `t_start.comm` member.  Once the emulator stopped substituting
+# the REPLAY HOST's commpage for a missing capture — correctly: its boot-stable
+# machine-identity words (CPU_CAPABILITIES, NCPUS, CACHE_LINESIZE, CPUFAMILY,
+# MEMORY_SIZE) describe the replay machine, not the recorded one, and no
+# read-twice check can detect that — the old recording died at instruction 30 on
+# an honest memory fault and covered nothing at all.
+#
+# The re-record uses the SAME recipe and preserves the fixture's meaning
+# exactly.  What moved:
+#
+#                            previous            this recording
+#   instructionsExecuted      198,408              192,927
+#   stop PC                 0x1000125B4          0x100014E04
+#   terminus                  fsgetpath            csrctl
+#   svcTrace entries              9                    6
+#   mach traps               3 / 3 handled        2 / 2 handled
+#   BSD syscalls             6 / 5 handled        4 / 3 handled
+#   osSimStubCount                1                    1
+#   predyldRecordCount            0                    0
+#   totalEvents                 168                  168
+#   write event geid           1143                 1143
+#   commpage pages mapped         2 (LIVE HOST)        2 (from t_start.comm)
+#
+# The TERMINUS moved for a second, independent reason, on the same day: the
+# OS-sim used to answer csrctl (BSD #483) from a compile-time constant
+# (HostCsrActiveConfig = 0x6F) measured on one developer's Mac.  The active SIP
+# configuration is a fact about the RECORDED machine and the emulated guest
+# branches on it, so the handler now reads it from the recording and declines
+# loudly when the recording does not carry it.  No recorder captures it yet, so
+# the replay stops there — correctly.  That decline, not fsgetpath, is this
+# fixture's terminus until the recorder gains the capture.
+#
+# It also modernizes the container: the recording now carries `t_start.mem` /
+# `t_start.regs` / `t_start.sysregs` / `t_start.stack` / `t_start.comm` /
+# `exe.macho` rather than the retired `cp0.mem` / `cp0.regs` names.
+# test_macos_inject_seed was still asking for the `cp0.*` names and passed only
+# because the old fixture was old enough to still carry them — two of its checks
+# were asserting the fixture's AGE, not its coherence.  Fixed with the re-record.
+
+program              = injected-record
+recordedOs           = rosMacos
+.ct bytes            = 10,018,816
+platform.bin bytes   = 35
+t_start.regs bytes   = 280  (arm_thread_state64_t + discriminator)
+t_start.sysregs bytes = 72  (M-S0MI-7: 5 thread system regs captured at T0)
+t_start.mem bytes    = 9,748,656
+t_start.stack bytes  = 56,639   (M-EME-T0 M2: sparse main-thread stack)
+t_start.comm bytes   = 32,812   (both arm64 commpages, host-volatile fields
+                                 normalized at record time)
+exe.macho bytes      = 51,392   (M-EME-T0 M1: bundled main-exe bytes)
+totalEvents          = 168
+histogram            = evSyncLockAcquireSuccess 83 | evSyncLockRelease 83 |
+                       evOsWrite 1 | evThreadStart 1
+evOsWrite payload    = 'one\x0A'  (geid 1143)
+founding svcs        = 0        (predyldRecordCount == 0 — the point)
+recorded exit status = 0        (`one` on stdout, iwoExited code=0)
+
+# ── replayMacosCtTrace outcome (macOS arm64 host) ───────────────────────────
+instructionsExecuted = 192,927
+stop                 = mrsUnhandledTrap
+stopPC               = 0x0000000100014E04
+firstUnhandled       = csrctl (BSD #483).  The OS-sim declines: the record host's
+                       active SIP configuration is not in this recording, and the
+                       handler no longer substitutes a build-time constant.
+eventsConsumed       = 0
+predyldRecordCount   = 0
+svcTrace (all 6, in order, all via the no-founding-stream fallback):
+  task_self_trap, mach_reply_port, thread_selfid, platform_syscall,
+  crossarch_trap, csrctl
+  -> the first 5 are serviced by the OS-sim; the 6th is loud-flagged, not faked.
+mach traps           = 2 / 2 handled
+BSD syscalls         = 4 / 3 handled
+osSimStubCount       = 1
+commpagePagesMapped  = 2   (both from t_start.comm)
+sharedCachePagesMapped = 0
+unknownSysRegReads   = 1
+regionsFromSnapshot  = 0
+terminated           = false
+sysRegsSeeded        = 5
+seededTpidrroEl0     = 0x0  (the true T0 value; the kernel seeds thread-self
+                             later, via the libpthread/TLS bring-up syscall)
+
+# ── REPLAY DETERMINISM ──────────────────────────────────────────────────────
+# Verified across THREE SEPARATE PROCESSES by
+# ct_emulator/tests/test_macos_replay_determinism.nim: identical instruction
+# count, stop PC, stop reason, cursor, consumed count and svc count every time.
+#
+# Recording nondeterminism is expected and is not a defect — only replay of a
+# GIVEN recording must be deterministic.
+
+# ── REPRODUCING ─────────────────────────────────────────────────────────────
+#   bash mcr/macos-arm64/emulator/regenerate.sh eme5_inject
+#
+# The driver hard-fails if the recording comes back WITH founding records: that
+# would silently delete the only coverage the emulator's no-predyld fallback has.

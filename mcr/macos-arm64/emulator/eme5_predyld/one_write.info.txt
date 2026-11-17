@@ -1,0 +1,176 @@
+eme5_predyld/one_write.ct — RE-RECORDED 2026-11-16
+====================================================
+
+Recorded on m4 (Apple Silicon, SIP disabled) by
+codetracer-native-recorder 92f3a34c with the committed driver
+ct_cli/tests/record_macos_eme5_predyld.nim (CT_STAGE0_INCHILD_SETUP=1).
+
+Event histogram: one_write.events.txt.  1952 evOsPredyldSyscall founders
+(2044 before), all SP-stamped, plus 15 evCpuNondeterministic reads
+interleaved with them; founders at geids 2..2055, 1950 before evThreadStart
+and 2 after it, all before the program's evOsWrite (geid 2056).  The trace now
+carries `recordcfg`, `dyld.macho`, `filemap.bin` and a seekable `i00000000000`
+index beside `t00000000000`.
+
+Against the previous recording every founding selector's count is the same
+except mach_vm_allocate (-10, 51 -> 5) and mach_vm_deallocate (-12, 55 -> 9):
+the previous recording had 46 single-page allocate/deallocate pairs at events
+1950-2041, after the replay's terminus; this one does not.
+
+one_write.ct.head.json was removed with this recording: the current
+recorder writes no .head.json, and the one left here described the previous
+recording (eventCount 2052).  Mentions of it below are historical.
+
+Replay, measured on m4 against native-recorder 92f3a34c
+(test_macos_founding_served_replay, test_macos_predyld_events_in_stream):
+  * the same walk as before: 2148 svcs with the same selector at every index,
+    founding cursor 1945, 1898 served, 74 out-param copyouts, 233 Mach traps
+    and 1914 of 1915 BSD svcs handled;
+  * the same terminus: `access` (BSD #33) with no matching founding event, at
+    shared-cache offset 0x4AE664 (PC 0x18A81E664; cache base 0x18A370000);
+  * 55,839,001 instructions (55,218,630 before), +1,012,351 of it between svc
+    #2127 (close) and #2128 (mprotect);
+  * 717 shared-cache pages (714 before).
+The pinned values live in codetracer-native-recorder
+ct_emulator/tests/support/eme5_predyld_characterization.nim.
+
+eme5_predyld_prestamp/one_write.ct is derived from this file; re-run its
+derive.sh whenever this one is re-recorded.
+
+==============================================================================
+EVERYTHING BELOW THIS LINE IS HISTORICAL.  It describes the recording this
+file was written for, which the 2026-11-16 re-recording replaced.  Its numbers
+(instruction counts, stop PCs, geids, counts, addresses) are NOT this file's.
+==============================================================================
+
+# eme5_predyld/one_write — the FOUNDING-ARMED inject fixture
+#
+# Victim: write(1,"one\n",4); return 0;  (programs/mcr_one_write.c, shared with
+# eme5_inject / eme5_predyld / eme_m9c_2006 via the one_write.c symlink).
+#
+# Recorded via: ct_cli/tests/record_macos_eme5_predyld.nim
+#   = the injected record path (runInject imRecord, SIP-off PC-hijack at
+#     pre-dyld T0) WITH CT_STAGE0_INCHILD_SETUP=1 — the M-EME-T0 Stage 2c/3b
+#     freestanding-C in-child installer, which is how the current recorder
+#     captures dyld's founding syscalls.
+#
+# WHY THIS FIXTURE EXISTS (and why it is NOT an overwrite of eme5_inject).
+# eme5_inject carries predyldRecordCount == 0 and is the ONLY fixture that
+# exercises the emulator's no-founding-stream FALLBACK path
+# (ctfs_bridge.nim, `if not havePredyldStream:`).
+#
+# UPDATED 2026-07-29: founding capture is now the RECORD DEFAULT
+# (predyld_svc_capture.nim resolveFoundingCapturePath), so a plain
+# `ct-mcr record` produces a recording shaped like THIS one, and eme5_inject
+# now reaches its founding-free shape via an explicit
+# CT_STAGE0_INCHILD_SETUP=0.  The fallback therefore serves no NEW recording —
+# but it remains the only way to replay the recordings made before the
+# promotion, eme5_inject among them, so eme5_inject keeps its job.  Retiring
+# the fallback is a trace-compatibility decision (do pre-promotion `.ct` files
+# stop replaying?), not a mechanical deletion: `havePredyldStream` is a
+# property of the RECORDING, never of the replay mode.
+#
+# The founding-armed recording is THIS configuration directory — the established slot for "inject +
+# CT_STAGE0_INCHILD_SETUP=1", which until 2026-07-29 had no committed driver.
+#
+# RE-RECORDED 2026-07-29.  The recording that stood here predated
+# `captureCommpage`, so it carried no `t_start.comm`.  Once the emulator stopped
+# substituting the replay host's commpage for a missing capture — correctly, since
+# the boot-stable machine-identity words describe the replay machine and no
+# read-twice guard can see that — it stopped replaying: 22,397,342 instructions /
+# founding cursor 43 became 10,960,086 / mrsMemoryFault / cursor 0.  The re-record
+# carries the sidecar and goes far further (55.2M, cursor 1945).
+#
+# It also ABSORBED the short-lived `eme5_inject_founding` directory.  That was
+# created earlier the same day as a home for the founding-armed recording while
+# this slot was broken and driverless; once this slot was fixed the two were
+# measured to be the SAME recorder configuration producing the SAME fixture —
+# identical stop PC, stop reason, cursor 1945, consumed 1945, svc 2148,
+# unknownSysRegReads 1946, differing only in the raw instruction count by ~569
+# out of 55.2M, which is ordinary recording nondeterminism.  Keeping both would
+# have been two 19 MB copies of one thing.
+#
+# WHAT IT PINS THAT NOTHING ELSE DOES.  It is the first fixture whose emulator
+# replay CONSUMES the recorded stream at scale: 1945 events consumed, 1898
+# founding svcs served from the recording, 74 out-param copyouts replayed —
+# against eme5_predyld's 43 consumed.  It is therefore the fixture on which
+# per-syscall merkle emission over a macOS trace is non-vacuous.
+
+program              = injected-record
+recordedOs           = rosMacos
+.ct bytes            = 19,169,280
+totalEvents          = 2052
+histogram            = evOsPredyldSyscall 2044 | evSyncLockAcquireSuccess 3 |
+                       evSyncLockRelease 3 | evOsWrite 1 | evThreadStart 1
+evOsWrite payload    = 'one\x0A'  (geid 2047)
+founding svcs        = 2044  (evOsPredyldSyscall, type 126)
+recorded exit status = 0      (the victim ran to completion: `one` on stdout,
+                               iwoExited code=0)
+
+# Record-side note (one_write.ct.predyld):
+#   C-installer status = 0x2C2C2CDE, 169 svc sites patched, stubBase 0x100150000
+#   cacheArmed=yes, recoveredSites=169, handedOff=true, maxBandCount=2042
+#   -> B12-clean: no swallowed install failure anywhere in the note.
+
+# ── replayMacosCtTrace outcome (macOS arm64 host) ───────────────────────────
+instructionsExecuted = 55,218,004
+stop                 = mrsUnhandledTrap
+stopPC               = 0x000000018F25A664
+firstUnhandled       = access (BSD #33) — a value/OUT-param restore with no
+                       matching record at the founding cursor; the honest
+                       terminus, loud-flagged, never faked.
+eventsConsumed       = 1945
+predyldCursor        = 1945
+predyldRecordCount   = 2044
+predyldServedCount   = 1898
+predyldOutParamsWritten = 74
+svcTrace entries     = 2148   (31 distinct selectors)
+mach traps           = 233 / 233 handled
+BSD syscalls         = 1915 / 1914 handled
+osSimStubCount       = 1      (the single unhandled `access`)
+regionsFromSnapshot  = 0      (M2: the stack is RECONSTRUCTED from t_start.stack)
+sharedCachePagesMapped = 714
+commpagePagesMapped  = 2
+unknownSysRegReads   = 1946
+terminated           = false  (replay does not reach the recorded exit yet)
+
+# svcTrace selector histogram (top 10 of 31 distinct):
+#   1797 stat64 | 150 _kernelrpc_mach_vm_protect_trap |
+#     53 _kernelrpc_mach_vm_allocate_trap | 14 close | 13 fcntl |
+#     12 munmap | 12 mmap | 9 open | 7 mach_msg2_trap |
+#      7 _kernelrpc_mach_vm_deallocate_trap
+
+# ── REPLAY DETERMINISM ──────────────────────────────────────────────────────
+# Verified across THREE SEPARATE PROCESSES (the only form that has teeth — three
+# replays inside one process were always identical even while the invariant was
+# violated): all three produced byte-identical
+#   instr=55218004 stopPC=0x18F25A664 stop=mrsUnhandledTrap cursor=1945
+#   consumed=1945 svc=2148 unknownSysRegReads=1946
+# Gated by ct_emulator/tests/test_macos_replay_determinism.nim.
+#
+# Recording nondeterminism is EXPECTED and is not a defect: a fresh record of the
+# same program legitimately differs (this run captured 2044 founding svcs; an
+# earlier run of the same driver captured 2648).  Only REPLAY of a GIVEN
+# recording must be deterministic.
+
+# ── REPRODUCING ─────────────────────────────────────────────────────────────
+#   bash mcr/macos-arm64/emulator/regenerate.sh eme5_predyld
+#
+# THE DRIVER BUILDS ITS OWN LEAN INTERPOSE DYLIB, and that choice moves the
+# numbers above: the lean (-d:ctLeanRecord) shim does less pre-`main` work, so it
+# contributes fewer founding svcs than the full one (2044 vs 2648).  It is built
+# by the driver rather than taken from disk because the sibling driver
+# `record_macos_eme_m9c_2006.nim` OVERWRITES `ct_interpose/libct_interpose.dylib`
+# as a side effect, so a driver that takes the file as found records a different
+# fixture depending on which sibling ran last.  `record_macos_eme_m9c_2006` has
+# always used the lean build; using it here keeps the two fixtures comparable.
+#
+# CORRECTION worth keeping: an earlier note here claimed the lean build was a
+# CORRECTNESS requirement — that the founding-armed child WEDGES with the full
+# dylib (installer OK, then runaway execution inside the stub region, ~13.8M
+# exception spins, handedOff=false, zero founding svcs).  That wedge was real and
+# was reproduced 5/5, but the attribution was wrong: it reproduces only against an
+# interpose dylib built BEFORE `eb53149d`, and not at that commit or later
+# (re-tested 4/4 clean with the standard full dylib).  The failure shape is now
+# diagnosed at its source in the recorder's poll tail instead of surfacing as a
+# bare "victim timed out".

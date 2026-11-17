@@ -1,0 +1,8 @@
+# Committed .ct files that the current readers refuse, and why.
+#
+# verify-all-recordings.sh checks every other committed .ct with both trace
+# readers. A file listed here must still be refused by BOTH, and only for its
+# container version; one that opens fails the check, so its line is removed
+# rather than left to hide a later regression.
+#
+# Format: <path><TAB><reason>

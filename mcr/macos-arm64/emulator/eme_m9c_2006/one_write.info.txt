@@ -1,0 +1,517 @@
+eme_m9c_2006/one_write.ct — RE-RECORDED 2026-11-16
+====================================================
+
+Recorded on m4 (Apple Silicon, SIP disabled) by
+codetracer-native-recorder 92f3a34c with the committed driver
+ct_cli/tests/record_macos_eme_m9c_2006.nim.
+
+Shape: 2052 founding svcs (as many as the recording it replaced) + the
+program's write + exit; interpose dylib
+1,410,304 B; tstart.bpat with 5 images and 14 regions.
+
+Replay, measured on m4 against native-recorder 92f3a34c
+(test_macos_eme_m9c_2006_replay, test_macos_strong_kernel_replay): every
+pinned value held except the exit svc's PC, 0x1021992C8 (0x1021912C8 before).
+That svc is in the reconstructed libsystem_kernel stub (tstart.bpat's
+2,146,304-byte stub region), which this recording's kernel placed at
+0x1020BC000 (0x1020B4000 before); its offset into the stub, 0xDD2C8, is
+unchanged.  The replay reaches the program's exit with "one\n" in all modes.
+
+==============================================================================
+EVERYTHING BELOW THIS LINE IS HISTORICAL.  It describes the recording this
+file was written for, which the 2026-11-16 re-recording replaced.  Its numbers
+(instruction counts, stop PCs, geids, counts, addresses) are NOT this file's.
+==============================================================================
+
+# eme_m9c_2006/one_write — §1A.9 REACH-INDEPENDENT whole-program svc-capture
+# via the FAST INLINE DETOUR tier (no per-syscall trap) one_write recording.
+#
+# Victim: write(1,"one\n",4); return 0;   (direct write syscall.)
+#
+# WHY THIS FIXTURE EXISTS
+# ----------------------------------------------------------------------------
+# The M9c whole-program svc-capture patcher routes each captured svc site
+# through a per-site trampoline reached WITHOUT a per-syscall parent trap.
+# The preferred tier is a `B`->island (±128 MiB).  For an image whose __text
+# is wholly inside the dense dyld shared cache — notably `libsystem_kernel`
+# (the 522-site syscall funnel) — some boot layouts leave NO ±128 MiB-reachable
+# gap for the island, so island placement fails.
+#
+# The §1A.9 fix adds a TIERED, reach-INDEPENDENT per-site patch:
+#   tier 1  B -> island        (fast, no trap; needs a ±128 MiB hole)
+#   tier 2  ADRP DETOUR         (fast, NO trap; needs only a ±4 GiB hole) <== NEW
+#           The svc site is overwritten with an 8-byte ABSOLUTE redirect
+#           `ADRP X17,<stubpage> ; BR X17` (svc + 1 following instruction).
+#           The overwritten following instruction is RELOCATED into a per-site
+#           4 KiB-aligned stub whose body is the SAME guarded in-child capture
+#           body the island tier uses (depth/thread guard, out-param capture,
+#           real-svc re-issue, band append) followed by the relocated
+#           instruction (PC-relative fields fixed up) and an absolute return
+#           to site+8.  Because the redirect is a plain branch pair, EVERY
+#           captured syscall stays entirely in-child — ZERO parent round-trips.
+#   tier 3  BRK + handler       (4 bytes, no reach limit, but ONE PARENT TRAP
+#           PER SYSCALL) — the LAST-RESORT fallback, used only for the
+#           (empirically zero) residual sites whose following instruction the
+#           detour relocator declines.  BRK is what this fixture USED TO use for
+#           libsystem_kernel; the detour replaces it with a trap-free path.
+#
+# The following instruction after a libsystem_kernel svc is empirically always
+# `b.cc` (the syscall error check, `0x54000103`) or `ret` — both relocated fast.
+#
+# RECORDED VIA (ETE-FREE):
+#   CT_STAGE0_INCHILD_SETUP=1 CT_M9_EVERYIMAGE=1 CT_M9C=1 CT_ARC4_HOOK=1
+#   env -u DYLD_LIBRARY_PATH ; interpose dylib built -d:ctLeanRecord ;
+#   driver signed with cs.debugger + thread-set-state entitlements.
+#   COMMITTED driver (reproducible):
+#     ct_cli/tests/record_macos_eme_m9c_2006.nim
+#     cd ct_cli && nim c -r tests/record_macos_eme_m9c_2006.nim
+#     (CT_REC_OUT=<path> to choose output; CT_REC_INSTALL_FIXTURE=1 to refresh
+#      this fixture's replayable subset.)  Replaces the old scratch
+#     zz_rec_m9c_owfree.nim (deleted).
+#
+# WHAT THE RECORDING PROVES (from the .predyld note + dump-events):
+#   0x00018EEC0000 : 169 sites : PATCHED (via DETOUR)   <- CACHE-DYLD re-arm  ***
+#   0x0001001A8000 :  99 sites : PATCHED (via B-island)
+#   0x00018F259000 : 522 sites : PATCHED (via DETOUR)   <- libsystem_kernel
+#   0x000292323000 :   4 sites : PATCHED (via DETOUR)
+#   founding svcs captured : 18 (disk-dyld band) ; whole-program band incl. the
+#   cache-dyld restart : total 2130 evOsPredyldSyscall events in the .ct
+#   (was 107 before the cache-dyld re-arm).
+# The *** line is the fix this fixture proves: the CACHE-dyld's __text (169 svc
+# sites) is scanned + patched at the disk->cache handoff (see REPLAY FRONTIER),
+# so its second-mach_init restart run is captured.  libsystem_kernel's 522 sites
+# are still captured via the FAST detour (no per-syscall BRK trap).
+#
+# BUNDLED IN-REPO (replayable subset; the event stream is self-contained in
+# the .ct — the whole-program band is already drained into it at record):
+#   one_write.ct            main CTFS trace (replayable)
+#   one_write.ct.head.json  recording head
+#   one_write.ct.loadtrap   M7 image-load-trap sequence (base,size, load order)
+#   one_write.ct.m9images   M9 svc-issuing image list (":detour" = §1A.9 tier-2)
+#   one_write.ct.predyld    founding + parent-note dump (tier counts, pin, etc.)
+#   one_write.c             victim source
+#
+# NOT bundled (large; kept durably OUTSIDE the non-LFS repo):
+#   one_write.ct.wpband.1/2 whole-program svc bands (4.6 MB / 13 MB — bloated by
+#                           a file-backed mmap full-region out-param capture)
+# The FULL recording (all sidecars) lives durably at:
+#   ~/mcr-hwtrace/eme_m9c_2006_cachedyld/
+#
+# THE CACHE-DYLD RE-ARM (recorder fix, predyld_svc_capture ``pollRendezvous``):
+#   The founding stream captures the DISK-dyld bring-up (idx 0..17), the LAST of
+#   which (idx 17) is proc_info #336 = ``proc_set_dyld_all_image_info`` — the
+#   DISK->CACHE dyld HANDOFF (``restartWithDyldInCache``).  The cache-dyld then
+#   RE-RUNS mach_init from its OWN __text (inline svc, PC in 0x187E_xxxx) —
+#   thread_selfid (372), platform_syscall (0x80000000), csrctl, mach_vm_allocate,
+#   mach_port_construct(-24), … — the SECOND mach_init run of the double-dyld.
+#   Because the cache-dyld is PRE-MAPPED in the shared cache and restarted into,
+#   it never fires an M7 image-load-trap, so the M9a every-image patcher (which
+#   patches AT the load-trap) formerly never scanned it and the whole restart run
+#   escaped capture (the old 107-event sparsity).  THE FIX: at the cache-detect
+#   hold — cache mapped + pristine, cache-dyld NOT yet run — the cache-dyld
+#   __text is scanned + patched (169 sites, DETOUR tier) via the SAME reach-
+#   independent tiered patcher M9a uses for every other image, so the cache-dyld's
+#   restart svcs flow through the whole-program band.  Result: events #18/#19 in
+#   the .ct are now the 2nd thread_selfid + platform_syscall, and the .ct holds
+#   2130 evOsPredyldSyscall events (was 107).
+#
+# REPLAY FRONTIER (replayMacosCtTrace, this recording):
+#   With the cache-dyld founders in the stream, replay CROSSES the former
+#   cursor-18 platform_syscall wall — it serves the cache-dyld restart from the
+#   recorded stream and advances to founding cursor 88 (80 svcs served, ~25.8M
+#   instructions).  The NEW terminus is a MEMORY FAULT in the cache-dyld's OWN
+#   __text at PC 0x187EEC738: at cursor 87 a whole-program ``mmap`` was captured
+#   as a PREFIX only (recorded len 0xBEEE0 but only 0x1FFBC bytes in the event
+#   payload), so the guest faults reading the un-provisioned tail.  This is a
+#   SEPARATE capture-completeness gap (large file-backed mmap payloads truncated
+#   to a prefix), ORTHOGONAL to the cache-dyld re-arm — the next frontier.
+#   Pinned by test_macos_eme_m9c_2006_replay.nim (cursor 88 + memory-fault PC).
+#
+#   Before this fix the terminus was the cursor-18 platform_syscall unhandled-
+#   trap @0x187F18AF4 (served 13, 107 events) — see git history.  The emulator's
+#   thread_selfid mint (ctfs_bridge, commit b852a963) is now a no-op for this
+#   fixture: the 2nd thread_selfid is served from the stream, not minted.
+
+# ============================================================================
+# RE-RECORDED 2026-07-30 — the out-param destination fix, and what moved
+# ============================================================================
+# Re-recorded with the committed driver after two recorder fixes landed
+# (codetracer-native-recorder `metacraft-labs/dev`: an out-param rule must prove
+# its destination is an address; a non-address the recording agrees with is not a
+# divergence).  Why a re-record was REQUIRED rather than optional: under
+# `--os-simulation=strong-userspace` the replay runs the injected HOOK IMAGE THAT
+# THE RECORDING CAPTURED (`mbpRegionHookBlob` inside `t_start.bpat`), so a change
+# to the hook's replay arm cannot reach an already-recorded trace at all.
+#
+# WHAT THE OLD RECORDING CONTAINED THAT WAS WRONG.  Its 4th
+# `shared_region_check_np`(294) — event 1944 — carried an 8-byte "out-param" of
+# ZEROS.  The guest legitimately calls that syscall with `x0 == -1` (verified: the
+# emulator reads the same value out of the live guest registers at the same PC,
+# and the site is dyld's own `__shared_region_check_np` stub), so there was no
+# copyout to capture; capture rule 294 was unconditional and fabricated one.  In
+# this recording that produced 8 zero bytes; in a normally-compiled recorder build
+# the same rule SEGFAULTS the append, i.e. a syscall argument could kill a
+# recording.  Event 1944 now correctly carries NO out-param.
+#
+# WHAT MOVED IN THE PINS, and the classification of each:
+#   * strong-userspace `stopPC` 0x1002692B8 -> 0x18F259B58.  A REAL DEFECT WAS
+#     FIXED.  The old stop was the re-issued `svc` inside the reconstructed
+#     capture-stub region, reached because the hook refused the fabricated
+#     out-param.  The new stop is `libsystem_kernel`'s `task_self_trap`, OUTSIDE
+#     that region — the guest got past 1944 and is now blocked by a DIFFERENT,
+#     named gap (see below).  Nothing else moved: cursor 1945, 1896 in-guest
+#     restores, 49 emulator ring skips, zero emulator serves and the
+#     consume-XOR-serve identity are all unchanged, and the stop is still an
+#     honest hard-stop — so no regression is hidden behind the new number.
+#   * the stub-region BOUND assertion flipped direction with the cause, and is
+#     re-expressed as "outside the stub region, inside libsystem_kernel's
+#     __TEXT", which is the B12 never-stubbed signature rather than the old
+#     stub-ran-and-took-its-record-arm signature.
+#   * `t_start.bpat` is now MBP1 v2 (128-byte image blocks, carrying a whole-file
+#     content hash for the interpose dylib).  ACCEPTABLE — the record got richer.
+#     COST, recorded because it is easy to miss: this was the only committed
+#     fixture with a `t_start.bpat`, so no fixture exercises the v1 decode path
+#     any more.  The v1 cases in `ct_events/tests/test_macos_bootstrap_patch.nim`
+#     construct their records and so still cover it, but they are now the ONLY
+#     coverage and must not be thinned out.
+#   * DEFAULT-mode pins did NOT move: 2133 records, arc4 11, predyldServed 1935,
+#     bsdMemoryOps 15, cursor 2009, stopPC 0x18F25A638.  Nor did strong-kernel,
+#     per-thread-stream, commpage or determinism (now also asserted under
+#     strong-userspace, 3 separate processes).
+#
+# THE NEXT GAP THIS FIXTURE NOW EXHIBITS.  The `WHAT THE RECORDING PROVES` list
+# above shows FOUR patched images.  `t_start.bpat` carries only the cache-dyld one
+# plus the interpose dylib, so libsystem_kernel (522 sites at 0x18F259000) and
+# libRosetta (4 sites at 0x292323000) replay PRISTINE and their inline svcs arrive
+# unstubbed — which is exactly the new terminus.  The `mbpImgCacheDylib` MBP1 wire
+# kind exists for these and has no producer.  Record completeness, not divergence.
+
+# ============================================================================
+# RE-RECORDED AGAIN 2026-07-30 — MBP1 now carries ALL FOUR patched images
+# ============================================================================
+# The `WHAT THE RECORDING PROVES` list above has always shown FOUR patched
+# images.  `t_start.bpat` used to describe TWO of them (the cache-dyld, plus the
+# interpose dylib's segments), so `libsystem_kernel` (522 sites) and
+# `libRosetta` (4 sites) replayed PRISTINE and every inline `svc` in them arrived
+# at the emulator unstubbed.  The `mbpImgCacheDylib` wire kind existed with no
+# producer.  It has one now, driven off the patcher's ACTUAL results, and the
+# record reports its own coverage: `MBP1 coverage: patched 4 image(s), carried 4
+# (COMPLETE)` in the .predyld note.
+#
+# `t_start.bpat` now carries, with full site tables:
+#   mbpImgCacheDyld      0x18EEC0000  169 sites  detour   stub 0x1001EC000
+#   mbpImgInterposeDylib 0x100358000   99 sites  ISLAND   stub 0x100E1C000
+#   mbpImgCacheDylib     0x18F259000  522 sites  detour   stub 0x100E5C000
+#   mbpImgCacheDylib     0x292323000    4 sites  detour   stub 0x300000000
+# The dylib's island-tier inventory comes from the patcher's per-site plan, which
+# is the only possible source: an island redirect is a single `B` word and no byte
+# scan of the patched __text can tell it from ordinary code.  The three
+# shared-cache images carry NO content hash and that is a refusal, not a gap —
+# they have no standalone backing file, so there is no host file they may ever be
+# sourced from; the cache's identity is the recorded dsc.bin and the record
+# carries their post-patch __text verbatim.
+#
+# PINS THAT MOVED, all one classification — THE FIXTURE GOT RICHER, reach improved,
+# nothing hidden:
+#   * default-mode `stopPC` 0x18F25A638 -> 0x100E9F2B8.  Cursor 2009 UNCHANGED, as
+#     are the record count, arc4 serves, predyld serves and bsdMemoryOps: the guest
+#     reaches the same event but now through the reconstructed capture stub instead
+#     of the pristine image.
+#   * strong-kernel `stopPC` the same, and its field-for-field equality with the
+#     default mode — the invariant that test owns — still holds.
+#   * strong-userspace: cursor 1945 -> 1967, stubRestored 1896 -> 1915, ringSkips
+#     49 -> 52, `stopPC` 0x18F259B58 -> 0x100E9C2B8.  The consume-XOR-serve
+#     identity still holds exactly (1915 + 52 == 1967) and emulator serves are
+#     still zero, so 22 more events are restored IN-GUEST and nothing became more
+#     permissive.  All 695 detour sites across the three cache images re-derive
+#     byte-for-byte at replay (0 mismatched).
+#
+# THE NEXT GAP: `getentropy`(500) at 0x100E9C2B8 — INSIDE libsystem_kernel's newly
+# reconstructed stub region, so the stub ran and took its RECORD arm.  The recorded
+# head there is the arc4 "RAND" sentinel (0x52414E44): the arc4/CPRNG hook captured
+# a RAND record where the guest now issues a real `getentropy`.  The arc4 hook has
+# no replay arm yet (it is served emulator-side at a PC, one level up from the
+# ring), so this is a MISSING HOOK REPLAY ARM — not a divergence.
+
+# ============================================================================
+# RE-RECORDED 2026-07-30 — armed with the RECORD-SIDE FOUNDING MEMORY MERKLE
+# ============================================================================
+# The emulator has been emitting a whole-memory root at every founding cursor it
+# serves (2009 of them on this fixture, 92,624-99,347 pages each) for a while.
+# It produced NO VERDICT, because a root with nothing to pair against is not a
+# comparison: the record-side baseline can only be produced by the PARENT,
+# cross-task, at the two holds the M9c capture provides, and it was opt-in — so
+# the committed fixture carried 2009 replay roots and ZERO record roots.
+#
+# `CT_MEM_MERKLE_FOUNDING` is now armed by DEFAULT in the committed driver, and
+# this recording therefore ships a new sidecar:
+#
+#   one_write.ct.founding_merkle.rec   two `REC froot` lines (114 B)
+#       cursor=11    root=FB8F667215F0964A  pages=1,564,468   (CDRV rendezvous)
+#       cursor=2134  root=19A18FB2449AEAAB  pages=1,576,288   (quiescence)
+#
+# NOT bundled: `one_write.ct.founding_merkle.rec.pages`, the per-page
+# `(VA,xxh64)` detail — 188 MB, because the §1A.9 walk covers every readable page
+# of the child including the whole shared cache. It lives with the full recording
+# at ~/mcr-hwtrace/eme_m9c_2006_merkle/ and is what a localization drill needs.
+#
+# Replay reaches cursor 2009, so hold (2) at 2134 has no replay partner: this
+# fixture has exactly ONE pairable cursor, 11.
+#
+# THE FIRST PAIRED VERDICT (default mode, keys aligned):
+#   common VAs 92,652 of 1,545,524 record / 92,668 replay  ->  10 DIFFERING
+#     5  recorder bands   0x700000006000, 0x700000080000..81000,
+#                         0x700000100000, 0x780000000000     (§1A.9 carve-out)
+#     2  disk-dyld __DATA 0x1000C4000, 0x1000CC000           (genuine residual)
+#     3  guest stack/TLS  0x16FDEA000, 0x16FDEB000 (ZERO on the replay side),
+#                         0x16FDEE000
+#   The shared cache, the commpage, the cache-dyld __text and all four patched
+#   images match BYTE-FOR-BYTE — 31 pages that a keying off-by-one had been
+#   reporting as divergence. See docs/mcr-founding-memory-merkle.md.
+#
+# WHAT MOVED IN THE PINS: `predyldRecordCount` 2133 -> 2134, and nothing else.
+# One more founding svc was captured and it sits PAST the stop. Cursor 2009,
+# predyldServed 1935, arc4 11, bsdMemoryOps 15, the stop PC 0x100E9F2B8, and
+# strong-userspace's 1933 in-guest restores / 76 ring skips / zero emulator
+# serves / consume-XOR-serve identity are all UNCHANGED. Recording variance on a
+# fixture that got no poorer — not a behaviour change.
+
+# ============================================================================
+# RE-RECORDED 2026-07-30 — HOLDS AT THE WALL, and the merkle keys by GEID
+# ============================================================================
+# The record-side founding merkle could only be produced at the two holds the
+# in-child capture happens to provide: the CDRV rendezvous (cursor 11) and
+# quiescence (2134).  Replay stops at 2009, so quiescence has no partner and this
+# fixture had exactly ONE pairable cursor — 11, two thousand events away from the
+# divergence the instrument exists to localize.
+#
+# The recorder can now be told to hold at any founding ordinal
+# (`CT_MEM_MERKLE_FOUNDING_HOLDS`), and the committed driver defaults to a bracket
+# around the stop.  This recording therefore carries SIX record roots:
+#
+#   one_write.ct.founding_merkle.rec
+#     geid=10    cursor=11    root=2B82A67128D05D1B  pages=1,564,468  detail=yes
+#     geid=2006  cursor=2007  root=08E59165F203E967  pages=1,567,712  detail=yes
+#     geid=2007  cursor=2008  root=69BE5781426B7F32  pages=1,567,712  detail=yes
+#     geid=2008  cursor=2009  root=E47F04747C6E39B1  pages=1,567,712  detail=yes
+#     geid=2009  cursor=2010  root=6143D8A882BEEB71  pages=1,567,716  detail=yes
+#     geid=2136  cursor=2134  root=A8958ABC80F2535D  pages=1,573,264  detail=no
+#
+# `geid` IS THE PAIRING KEY and `cursor` is annotation — see
+# docs/mcr-founding-memory-merkle.md.  Note the two are NOT a fixed offset apart:
+# at quiescence the record is at cursor 2134 and geid 2136, because
+# ctRecordOsEvent draws from the same issue-order counter.  That is precisely why
+# keying by one and annotating with the other is not redundant, and why the
+# previous count-keyed pairing was able to be silently off by one.
+#
+# NOT bundled: `one_write.ct.founding_merkle.rec.pages`, the per-page (VA,xxh64)
+# detail — 550 MB, because the §1A.9 walk covers every readable page of the child
+# and five of the six holds are drilled.  It lives with the full recording at
+# ~/mcr-hwtrace/eme_wall_holds/ and is what a localization drill needs.
+#
+# NOTHING WAS RE-PINNED.  predyldRecordCount 2134, arc4 11, predyldServed 1935,
+# bsdMemoryOps 15, cursor 2009, stopPC 0x100E9F2B8, and strong-userspace's
+# 1933 in-guest restores / 76 ring skips / consume-XOR-serve identity are all
+# unchanged from the previous recording.  The holds stop the child at a BRK and
+# resume it at PC+4; they do not change what it records.
+#
+# THE FIRST PRE-WALL VERDICT (default mode, geid 2008 = cursor 2009):
+#   common VAs 99,287 of 1,567,712 record / 99,347 replay  ->  68 DIFFERING
+# and the set is essentially CONSTANT across the wall (69 at cursor 2007, 69 at
+# 2008, 68 at 2009, same VAs), so nothing freshly diverges there.  Its shape:
+#     5   recorder bands (§1A.9 carve-out)
+#     8   guest stack, 0x16FDE4000..0x16FDEB000 (4 of them ZERO on the replay side)
+#     11  program range: the interpose dylib's own __DATA (0x100383000..0x10038A000)
+#         plus the main image's first page
+#     5   dyld's anonymous persistent-allocator pool (0x101234000, 0x101268000,
+#         0x101284000, 0x10128C000, 0x1018E8000) — heavily read (28,321 reads of
+#         0x101234000 in the last 400 K loads before the stop)
+#     39  shared-cache __DATA / __DATA_DIRTY of libsystem_c, libsystem_kernel,
+#         libsystem_pthread, libdispatch, libxpc, libcorecrypto, libc++, libdyld
+# i.e. the pre-wall difference is dominated by the record having a live recorder
+# dylib doing libSystem work in the same process, not by one mis-reconstructed
+# word.  Of the 68, 40 are actually READ by the guest in that window; the ones
+# read closest to the stop are dyld __auth_got slots for getattrlist/memset and
+# `__stack_chk_guard` — benign by inspection.
+#
+# The cursor-11 verdict on this matched pair: 9 differing pages —
+#   5  recorder bands   0x700000006000, 0x700000080000..81000, 0x700000100000,
+#                       0x780000000000                       (the §1A.9 carve-out,
+#                       confirmed to be exactly this set and not a superset)
+#   2  disk-dyld __DATA 0x1000C4000, 0x1000CC000
+#   2  guest stack      0x16FDEA000 (ZERO on the replay side), 0x16FDEE000
+# The previous pair reported 10 (three stack pages, two of them unestablished);
+# 0x16FDEB000 now matches.  The unestablished-stack difference therefore tracks
+# how deep the RECORD's stack happened to be scribbled, which is recording
+# variance in the injected apparatus's own footprint — not a fixed reconstruction
+# gap of a specific page.
+
+
+# ============================================================================
+# RE-RECORDED 2026-07-31 — corrected selector list, AND a declared recording SHAPE
+# ============================================================================
+# Two long-parked recorder defects were fixed together, because the in-guest
+# stub's copy of the state-recreation boundary is FROZEN INTO EVERY RECORDING and
+# neither fix could be validated without a re-record:
+#
+#   1. `bsdthread_create` is BSD **360**, not 366.  366 is `bsdthread_register`
+#      — libpthread's one-time registration, which creates nothing — and the
+#      emulator's thread-creation arm was dispatched on it while its handler
+#      (`createGuestThread`) read 360's argument layout.  Thread-RANGE derivation
+#      reads the create frame's x2, so this was never cosmetic.
+#   2. The boundary was TWO hand-maintained lists that had silently diverged, 9
+#      selectors in the emulator's predicate against 10 in the stub's array.  It
+#      is now ONE array (`StateRecreationBoundarySelectors`), imported by both.
+#
+# THE PAYOFF, MEASURED on this fixture — all three emulator-backed modes replay
+# END TO END:
+#
+#   default          cursor 2135  mrsExit  terminated=true  exitCode=0  "one\n"
+#   strong-userspace cursor 2135  mrsExit  terminated=true  exitCode=0  "one\n"
+#   strong-kernel    cursor 2135  mrsExit  terminated=true  exitCode=0  "one\n"
+#
+# (`--os-simulation=weak-userspace` is not an emulator mode at all: it selects
+# NATIVE replay and the arm64 driver refuses it by name.)
+#
+# strong-userspace is the one that could not work before: with the PREVIOUS
+# fixture and the corrected predicates it stopped at 1953 on
+# "BSD bsdthread_register (n=366) reached the emulator OS layer but is NOT one of
+# the three state-recreation families" — the old stub keeps a real `svc` for 366
+# that the OS layer no longer claims.  The mirror also holds: this recording
+# replayed by the PRE-FIX emulator stops at 2120 on "bsd#360 ... is NOT one of the
+# three state-recreation families".  Those two are the frozen-list mechanism seen
+# from both sides, and together they are why the fix and the re-record are one
+# change.
+#
+# ── WHAT WAS *NOT* CAUSED BY THE SELECTOR FIX (a correction to the record) ────
+# An earlier version of this note, and the commit that carried it, attributed
+#   predyldServed 1935 -> 1955  and  arc4Served 11 -> 12
+# to the selector fix.  THAT ATTRIBUTION IS WRONG.  Measured: `eme_sp3` — a
+# recording made BEFORE the selector fix, replayed by the PRE-FIX emulator —
+# already reports served=1955 and arc4=12.  Those deltas come from the recording
+# GENERATION (the SP-stamped class, which the previously committed fixture
+# pre-dated), not from the selector change.  The selector change's actual effect
+# on the pins is: nothing in default/strong-kernel, and it is what makes
+# strong-userspace reach the exit at all.
+#
+# ── THIS FIXTURE IS PINNED TO A DECLARED RECORDING SHAPE ──────────────────────
+# The program does NOT record the same founding svc sequence every run, and one
+# of the shapes it produces CANNOT be replayed to the exit by the current
+# emulator.  The shape criterion — fixed BEFORE any replay was run, and a
+# property of the RECORDING only — is:
+#
+#     2133 founding events AND exactly 3 four-MiB `mach_vm_map(-15)` allocations
+#
+# A recording carrying a FOURTH 4 MiB map (flags 0x2004000 = VM_FLAGS_OVERWRITE |
+# user tag 2, i.e. a malloc-zone growth) has one extra event at index 2129; the
+# streams are identical for their first 2129 events and everything after shifts
+# by one.  Replay then stops at cursor 2129 in all three modes with
+#
+#   library/image mapping mmap (#197) issued at PC=0x…2B8 but is NOT at the
+#   recorded stream head [cursor 2129; head #-15]
+#
+# THAT IS A REPLAY-SIDE GAP, NOT A RECORDING DEFECT.  A 4-map recording is
+# legitimate — recordings need not be deterministic.  What is unexplained is why
+# the REPLAYED guest's allocator takes a different growth decision from the
+# recorded one; if reconstruction were faithful it would take the same one.  It
+# is filed as an open reconstruction-fidelity gap in
+# `codetracer-specs` MCR-Emulator-Replay-Contract-macOS.md, "A recording the
+# replay cannot reproduce is a reconstruction gap, not a recording defect",
+# together with the measurements that rule the selector fix out as its cause
+# (a 2x2 over {recording} x {replay code}, and `eme_spw6` — a recording made
+# before any of this work — reproducing the same 2129 stop under the pre-fix
+# emulator).
+#
+# SO A GREEN FIXTURE HERE IS NOT FULL COVERAGE.  It means "the replay reproduces
+# the shape we pinned".  Any re-record MUST report the shape it drew, and a
+# recording of the other shape must not be committed as though the terminus had
+# moved.
+#
+# THREAD ATTRIBUTION on this recording, measured: 157 DISTINCT RAW SP STAMPS over
+# the founding events (the `MOV X2, SP` stamp is live), resolving to ONE logical
+# id, {0}; `attributionActive` is true and the table carries two ranges — main
+# [0x16F604000,0x16FE00000) and the worker [0x8000000000,0x8000100000), the
+# latter derived from the 360 create frame.  For contrast, the fixture this
+# replaces had ONE distinct raw stamp whose value was 0x00000000 and
+# `attributionActive` false — it pre-dated the stamp entirely.
+#
+# RE-RECORDED 2026-11-15 on m4 (macOS 25F80, the host the fixture is bound to)
+# ----------------------------------------------------------------------------
+# The previous recording predates codetracer-native-recorder 5036212b (one GEID,
+# ctTid and CtPid space per recording; ring transport 2, a 128-byte ring header),
+# whose message says a trace recorded before it is re-recorded, not read.  Read
+# by the current emulator it stopped at cursor 0 in strong-userspace serving.
+#
+# Recorded with the committed driver at codetracer-native-recorder e78cdadb plus
+# the three fixes committed with this fixture (the emulator lays out the caps
+# GEID page as the recorder parent does; the shim's pre-dyld main thread and the
+# founding wrapper draw GEIDs from one cursor again; the in-guest restore table
+# carries mach_port_allocate (-16) and getrlimit (194)).  It is draw "h" of four
+# taken with those fixes: 2050 founding events, arc4 14 served, predyldServed
+# 1951; default, strong-userspace and strong-kernel serving all reach the exit
+# at cursor 2052 with "one\n" and exit code 0.
+#
+# THE SHAPE, AS THE NOTE ABOVE REQUIRES: 2050 events, NOT the 2051-event shape.
+# Two of the four draws were this shape (both replay to the exit with identical
+# numbers), one was the 2051 shape (an extra 4 MiB mach_vm_map, replay stops at
+# cursor 2012), one stopped at cursor 16 (an early extra getpid, a separately
+# documented variance).
+#
+# The 2051 shape is now explained.  macOS malloc picks a segment group by CPU
+# cluster, read with `mrs x11, TPIDR_EL0` in
+# `_xzm_xzone_find_and_malloc_from_freelist_chunk`; the injected in-child-setup
+# record path does not capture CPU identity, so the replay reads cluster 0 every
+# time.  The extra map is recorded only when the main thread's two reads saw
+# different clusters.  Forcing the replayed reads to {1, 0} or {1, 2} replays a
+# 2051-shape recording to the exit; {1, 1} or a constant 0 stops it at 2012.
+# Filed in codetracer-specs issues (2026-11-15, the injected macOS record path
+# does not capture CPU identity).
+#
+# `one_write.ct.head.json` is removed: the recorder no longer writes the sidecar
+# (readers follow the container), and the one left here described the previous
+# recording (2141 events).
+#
+# RE-RECORDED 2026-11-15 (second time), WITH CPU IDENTITY CAPTURED.
+# codetracer-native-recorder 293d7fe6 plus the in-child-setup CPU-identity
+# capture (codetracer-pm issue 2026-11-15, "the injected macOS record path does
+# not capture the CPU cluster malloc reads"): the founding parent arms every
+# shared-cache `mrs Xt, TPIDR_EL0` at the CDRV rendezvous and every counter
+# `mrs` in disk-dyld's __text before the child runs, steps each read the main
+# thread makes, and appends it to the main thread's stream as
+# evCpuNondeterministic (cnoMrsTpidrEl0 / cnoMrsCounter).
+#
+# THIS DRAW IS DELIBERATELY THE 2051-EVENT SHAPE that could not be replayed
+# before: its main thread's two xzone reads saw cluster 1 (0x1005) and then
+# cluster 2 (0x200F), so it carries the extra 4 MiB segment growth.  The replay
+# serves both reads (and dyld's 10 counter reads) and reaches the exit at cursor
+# 2053 with "one\n" and exit code 0 in default, strong-userspace and
+# strong-kernel serving.  Draw fx7 of a 7-draw fixture campaign on m4
+# (macOS 25F80), chosen for that shape.
+#
+# STILL NOT EVERY DRAW: about a third of recordings on a loaded host carry an
+# extra disk-dyld `getpid` before `proc_info` and stop at cursor 16.  That is a
+# separate input, not yet captured.  The likely mechanism, read from the
+# disassembly and the recorded sequence but not yet observed: dyld's `getpid`
+# caches the pid with an `stxr` whose status it discards, and only issues the
+# svc while that cache is empty, so a failed store at record time makes a
+# second svc that the emulator, whose store always succeeds, never issues.  It
+# occurs with the CPU-identity capture disabled too.
+#
+# RE-RECORDED 2026-11-16 WITH STORE-EXCLUSIVE OUTCOMES CAPTURED.
+# codetracer-native-recorder 39bab6bd plus the store-exclusive capture (the
+# cursor-16 stop): dyld's `getpid` caches the pid with
+# `ldxr w10,[x9]; cbnz w10; stxr wzr,w0,[x9]; ret` and ignores the store's
+# status.  The founding parent now puts a `brk` on that `ret` (disk-dyld,
+# cache-dyld and libsystem_kernel `__getpid` -- the only discarded-status
+# exclusive stores in dyld and in all 3646 cache images on 25F80), reads the
+# loaded value, the stored value and memory there, and appends the outcome as
+# evCpuNondeterministic/cnoStoreExclusive; the emulator applies it.
+#
+# OBSERVED, not inferred: on every draw that carried the extra early `getpid`
+# the parent saw disk-dyld's first store FAIL (loaded 0, stored the pid, memory
+# still 0), and on no other draw.  This draw is one of those (the first store
+# failed, the second stored), and its two xzone reads also saw cluster 2 then
+# cluster 1.  2052 founding events; default, strong-userspace and strong-kernel
+# serving reach the exit at cursor 2054 with "one\n" and exit code 0.  Replayed
+# by native-recorder 39bab6bd, which does not apply the outcome, it stops at
+# cursor 16 in all three modes.
