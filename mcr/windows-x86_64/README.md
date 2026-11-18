@@ -15,6 +15,9 @@ Pre-made `.ct` recording from a Windows x86_64 machine for DAP integration testi
 - **Threads:** 4 (the main thread and 3 workers, one event stream each)
 - **Format:** CTFS container version 5, `meta.dat` version 7
 - **Embedded binaries:** none in `trace.ct`; the program in `trace-portable.ct`
+- **Host inputs:** `trace-portable.ct` carries `hostin.bin`, the Windows
+  host inputs (system files by content hash, view residuals) of an emulator
+  replay that ran to the recorded exit, so it replays on any host
 
 ## Files
 
