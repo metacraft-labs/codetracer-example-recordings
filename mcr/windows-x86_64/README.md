@@ -18,6 +18,12 @@ Pre-made `.ct` recording from a Windows x86_64 machine for DAP integration testi
 - **Host inputs:** `trace-portable.ct` carries `hostin.bin`, the Windows
   host inputs (system files by content hash, view residuals) of an emulator
   replay that ran to the recorded exit, so it replays on any host
+- **START boundary:** both traces carry `s0start.bin`, the state the export's
+  emulator replay reached at the program's entry point (the system DLLs the
+  loader mapped by reference, the bytes the replay wrote, the emulator's
+  state), so a replay starts there instead of executing the recorder's
+  stage-0 runtime and the loader first: on Linux, `main` in under a minute
+  instead of many
 
 ## Files
 
