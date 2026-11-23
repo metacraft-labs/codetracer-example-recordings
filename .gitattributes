@@ -5,3 +5,7 @@
 **/rr/write_events.txt filter=lfs diff=lfs merge=lfs -text
 **/rr/mmaps filter=lfs diff=lfs merge=lfs -text
 *.bin filter=lfs diff=lfs merge=lfs -text
+# The emulator's pipe-capture stdout sidecars are a few bytes each and are read
+# by consumers that do not fetch LFS objects (the recorder's and the native
+# backend's CI clone this repository without LFS): keep them ordinary blobs.
+mcr/**/*.recorded_stdout.bin -filter -diff -merge
